@@ -411,9 +411,11 @@ jobs:
 
           GTKADA_DIR=$(find "${HOME}/.local/share/alire/builds" -path "*/gtkada_*" -type d -mindepth 1 -maxdepth 1 2>/dev/null | head -1)
           echo "Building gtkada in ${GTKADA_DIR}"
-          cd "${GTKADA_DIR}"
 
-          echo 'pragma Extensions_Allowed (All_Extensions);' > "${GTKADA_DIR}/src/gtkada.adc"
+          GTKADA_SRC=$(find "${GTKADA_DIR}" -name "gtkada-canvas_view.ads" -type f 2>/dev/null | head -1 | xargs dirname)
+          echo "GtkAda sources in ${GTKADA_SRC}"
+          echo 'pragma Extensions_Allowed (All_Extensions);' > "${GTKADA_SRC}/gtkada.adc"
+          cd "${GTKADA_SRC}/.."
 
           gprbuild -j"$(sysctl -n hw.ncpu)" -p -Pgtkada.gpr \
             -XXMLADA_BUILD=relocatable \
