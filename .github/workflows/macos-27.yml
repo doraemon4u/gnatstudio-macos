@@ -300,6 +300,8 @@ jobs:
           set -euxo pipefail
           source .ci/alire-env.sh
           export GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
+          export ADA_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${ADA_PROJECT_PATH:-}"
+          export LIBRARY_TYPE=static
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
 
           for p in $(echo "${GPR_PROJECT_PATH}" | tr ':' ' '); do
@@ -311,7 +313,6 @@ jobs:
             done
           done
 
-          # --- Diagnostic: capture actual gprls errors before bypassing ---
           echo '=== DIAGNOSTIC: gprls project resolution ==='
           echo "gprls binary: $(command -v gprls) ($(gprls --version 2>&1 | head -1))"
           echo "GPR_PROJECT_PATH entries with .gpr counts:"
@@ -319,26 +320,25 @@ jobs:
             cnt=$(ls -1 "${p}"/*.gpr 2>/dev/null | wc -l | tr -d ' ')
             echo "  ${cnt} .gpr in ${p}"
           done
-          echo "--- gprls xmlada check (stderr = conftest.out) ---"
-          cat > conftest_xmlada.gpr <<'EOF'
-with "xmlada";
-project Conftest is for Source_Files use (); end Conftest;
-EOF
+
+          echo "--- gprls xmlada check ---"
+          printf 'with "xmlada";\nproject Conftest is for Source_Files use (); end Conftest;\n' > conftest_xmlada.gpr
           gprls -Pconftest_xmlada.gpr system.ads > /dev/null 2>/tmp/conftest_xmlada.out || true
           cat /tmp/conftest_xmlada.out
+
           echo "--- gprls gtkada check ---"
-          cat > conftest_gtkada.gpr <<'EOF'
-with "gtkada";
-project Conftest is for Source_Files use (); end Conftest;
-EOF
+          printf 'with "gtkada";\nproject Conftest is for Source_Files use (); end Conftest;\n' > conftest_gtkada.gpr
           gprls -Pconftest_gtkada.gpr system.ads > /dev/null 2>/tmp/conftest_gtkada.out || true
           cat /tmp/conftest_gtkada.out
+
           echo "--- gnat ls fallback check ---"
           gnat ls -Pconftest_gtkada.gpr system.ads 2>&1 || true
+
+          echo "--- workspace root .gpr files ---"
+          ls -1 *.gpr 2>/dev/null || echo "(none)"
+
           echo "=== END DIAGNOSTIC ==="
           rm -f conftest_xmlada.gpr conftest_gtkada.gpr
-
-          # --- Bypass: force configure checks to pass ---
           sed -i '' 's|HAVE_GNAT_PROJECT_xmlada=no|HAVE_GNAT_PROJECT_xmlada=yes|g' configure
           sed -i '' 's|HAVE_GNAT_PROJECT_gtkada=no|HAVE_GNAT_PROJECT_gtkada=yes|g' configure
 
