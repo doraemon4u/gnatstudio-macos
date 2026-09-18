@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Patch GtkAda canvas_view.ads to work around GNAT 16 limitation.
+"""Patch GtkAda canvas_view.ads for GNAT 16.1 anonymous access limitation.
 
 GNAT 16.1.0 does not support implicit or explicit conversion of anonymous
-access parameters to named access types (an Ada 2022 feature). This script
-patches the two affected expression functions to use Unchecked_Conversion
-via System.Address instead.
+access parameters to named access types (an Ada 2022 feature requiring
+GNAT >= 26). This script uses Unchecked_Conversion via System.Address
+to bypass the limitation.
 """
 import sys
+import re
+
 
 def patch(path):
     with open(path) as f:
@@ -16,23 +18,25 @@ def patch(path):
         print(f'Already patched: {path}')
         return
 
-    # Add with clauses if not present
+    # Add with System; before the first "with" or "private with" line
     if 'with System;' not in content:
-        content = content.replace(
-            'with Ada.Unchecked_Deallocation;',
-            'with System;\nwith Ada.Unchecked_Deallocation;',
-            1
-        )
+        first_with = re.search(r'^(with |private with )', content, re.MULTILINE)
+        if first_with:
+            pos = first_with.start()
+            content = content[:pos] + 'with System;\n' + content[pos:]
+        else:
+            print('WARNING: no with clause found, cannot inject with System;', file=sys.stderr)
 
+    # Add with Ada.Unchecked_Conversion; before the first "with" or "private with" line
     if 'with Ada.Unchecked_Conversion;' not in content:
-        content = content.replace(
-            'private with Ada.Unchecked_Deallocation;',
-            'with Ada.Unchecked_Conversion;\nprivate with Ada.Unchecked_Deallocation;',
-            1
-        )
+        first_with = re.search(r'^(with |private with )', content, re.MULTILINE)
+        if first_with:
+            pos = first_with.start()
+            content = content[:pos] + 'with Ada.Unchecked_Conversion;\n' + content[pos:]
+        else:
+            print('WARNING: no with clause found, cannot inject with Ada.Unchecked_Conversion;', file=sys.stderr)
 
-    # Add conversion function before the first package declaration body
-    # Find the first "package Gtkada.Canvas_View is" and add after it
+    # Add conversion function after the package declaration
     marker = 'package Gtkada.Canvas_View is\n'
     idx = content.find(marker)
     if idx < 0:
@@ -50,12 +54,13 @@ def patch(path):
 
     # Replace the two expression functions
     old1 = '      return Abstract_Item is (Self);'
-    new1 = '      return To_Abstract_Item_Ptr (Self\'Address);'
+    new1 = "      return To_Abstract_Item_Ptr (Self'Address);"
     content = content.replace(old1, new1)
 
     with open(path, 'w') as f:
         f.write(content)
     print(f'Patched {path}')
+
 
 if __name__ == '__main__':
     patch(sys.argv[1])
