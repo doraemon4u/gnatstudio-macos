@@ -196,6 +196,9 @@ jobs:
 
           alr -n init --bin gnatstudiodeps
 
+          # Pre-select the toolchain so 'alr with' does not prompt interactively.
+          alr toolchain --select gnat_native=16.1.0 gprbuild=26.0.1
+
           # Alire invokes bare `brew`; the wrapper above is therefore the
           # actual fix for the ARM/Rosetta issue.
           alr -d with gtkada=26.0.0
