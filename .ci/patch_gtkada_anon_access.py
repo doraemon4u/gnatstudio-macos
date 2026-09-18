@@ -36,11 +36,11 @@ def patch(path):
         else:
             print('WARNING: no with clause found, cannot inject with Ada.Unchecked_Conversion;', file=sys.stderr)
 
-    # Add conversion function after the package declaration
-    marker = 'package Gtkada.Canvas_View is\n'
+    # Add conversion function after Abstract_Item type declaration
+    marker = "type Abstract_Item is access all Abstract_Item_Record'Class;\n"
     idx = content.find(marker)
     if idx < 0:
-        print(f'ERROR: could not find package declaration in {path}', file=sys.stderr)
+        print(f'ERROR: could not find Abstract_Item type in {path}', file=sys.stderr)
         sys.exit(1)
 
     conv_func = (
@@ -48,7 +48,6 @@ def patch(path):
         '   function To_Abstract_Item_Ptr is new Ada.Unchecked_Conversion(\n'
         '      Source => System.Address,\n'
         '      Target => Abstract_Item);\n'
-        '\n'
     )
     content = content[:idx + len(marker)] + conv_func + content[idx + len(marker):]
 
