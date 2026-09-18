@@ -417,7 +417,7 @@ jobs:
           cd "${GTKADA_SRC}"
 
           # Inject -gnatX into gtkada_shared.gpr using Python (handles multi-line use clauses)
-          python3 -c "
+          cat > /tmp/patch_gnatx.py << 'PYEOF'
 import re, sys
 path = sys.argv[1]
 with open(path) as f:
@@ -426,17 +426,17 @@ out = []
 i = 0
 while i < len(lines):
     line = lines[i]
-    # Multi-line: 'for [Default_]Switches (\"Ada\") use' alone on line
-    if re.search(r'for\s+(Default_)?Switches\s+\(\"Ada\"\)\s+use\s*$', line.rstrip()):
+    # Multi-line: 'for [Default_]Switches ("Ada") use' alone on line
+    if re.search(r'for\s+(Default_)?Switches\s+\("Ada"\)\s+use\s*$', line.rstrip()):
         out.append(line)
         i += 1
         if i < len(lines):
             nxt = lines[i]
-            nxt = re.sub(r'^(\s*)\(', r'\1(\"-gnatX\", ', nxt, count=1)
+            nxt = re.sub(r'^(\s*)\(', r'\1("-gnatX", ', nxt, count=1)
             out.append(nxt)
-    # Single-line: 'for [Default_]Switches (\"Ada\") use (...)' on one line
-    elif re.search(r'for\s+(Default_)?Switches\s+\(\"Ada\"\)\s+use\s+\(', line):
-        line = re.sub(r'(use\s+)\(', r'\1(\"-gnatX\", ', line, count=1)
+    # Single-line: 'for [Default_]Switches ("Ada") use (...)' on one line
+    elif re.search(r'for\s+(Default_)?Switches\s+\("Ada"\)\s+use\s+\(', line):
+        line = re.sub(r'(use\s+)\(', r'\1("-gnatX", ', line, count=1)
         out.append(line)
     else:
         out.append(line)
@@ -444,7 +444,8 @@ while i < len(lines):
 with open(path, 'w') as f:
     f.writelines(out)
 print('Patched', path)
-" "${SHARED_GPR}"
+PYEOF
+          python3 /tmp/patch_gnatx.py "${SHARED_GPR}"
 
           echo "=== Verify -gnatX injection ==="
           grep -n "gnatX" "${SHARED_GPR}" || echo "(gnatX NOT found!)"
