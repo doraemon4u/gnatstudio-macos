@@ -413,12 +413,12 @@ jobs:
           echo "Building gtkada in ${GTKADA_DIR}"
           cd "${GTKADA_DIR}"
 
-          echo 'pragma Extensions_Allowed (All_Extensions);' > /tmp/gtkada_ext.adc
+          echo 'pragma Extensions_Allowed (All_Extensions);' > "${GTKADA_DIR}/src/gtkada.adc"
+
           gprbuild -j"$(sysctl -n hw.ncpu)" -p -Pgtkada.gpr \
             -XXMLADA_BUILD=relocatable \
             -XLIBRARY_TYPE=relocatable \
-            -XBUILD=Production \
-            -gnatec=/tmp/gtkada_ext.adc
+            -XBUILD=Production
 
       - name: Regenerate configure (update ax_python_devel.m4)
         shell: bash
