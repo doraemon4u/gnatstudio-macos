@@ -196,7 +196,11 @@ jobs:
           file "$(command -v brew)"
           brew config | grep -E 'HOMEBREW_PREFIX|CPU|macOS|Rosetta' || true
 
-          # Pre-select the toolchain so 'alr with' does not prompt interactively.
+          # DNS warmup — GitHub runners sometimes have transient resolution failures
+          for _ in 1 2 3; do
+            curl -sf https://github.com >/dev/null 2>&1 && break || sleep 2
+          done
+
           alr toolchain --select gnat_native=16.1.0 gprbuild=26.0.1
 
           rm -rf .ci/gnatstudio-deps
@@ -206,12 +210,12 @@ jobs:
           alr -n init --bin gnatstudiodeps
           cd gnatstudiodeps
 
-          alr with gtkada=26.0.0
-          alr with xmlada=26.0.0
-          alr with gnatcoll=26.0.0
-          alr with gnatcoll_projects=26.0.0
-          alr with vss_extra=26.2.0
-          alr with vss_text=26.2.0
+          for dep in "gtkada=26.0.0" "xmlada=26.0.0" "gnatcoll=26.0.0" \
+                     "gnatcoll_projects=26.0.0" "vss_extra=26.2.0" "vss_text=26.2.0"; do
+            for attempt in 1 2 3; do
+              alr with "${dep}" && break || { echo "retry alr with ${dep}"; sleep 5; }
+            done
+          done
 
           alr update
 
