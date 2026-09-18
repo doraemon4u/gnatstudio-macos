@@ -269,8 +269,22 @@ jobs:
 
           source .ci/alire-env.sh
 
-          GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
-          ADA_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${ADA_PROJECT_PATH:-}"
+          ALIRE_EXTRA_PATHS=""
+          for p in $(echo "${GPR_PROJECT_PATH}" | tr ':' ' '); do
+            [ -d "${p}" ] || continue
+            parent="$(dirname "${p}")"
+            if ls "${parent}"/*.gpr >/dev/null 2>&1; then
+              ALIRE_EXTRA_PATHS="${ALIRE_EXTRA_PATHS}:${parent}"
+            fi
+            grandparent="$(dirname "${parent}")"
+            if [ "${grandparent}" != "${parent}" ] && ls "${grandparent}"/*.gpr >/dev/null 2>&1; then
+              ALIRE_EXTRA_PATHS="${ALIRE_EXTRA_PATHS}:${grandparent}"
+            fi
+          done
+          echo "ALIRE_EXTRA_PATHS=${ALIRE_EXTRA_PATHS}"
+
+          GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr${ALIRE_EXTRA_PATHS}:${GPR_PROJECT_PATH:-}"
+          ADA_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr${ALIRE_EXTRA_PATHS}:${ADA_PROJECT_PATH:-}"
           LIBRARY_PATH="${GNATCOLL_PYTHON_PREFIX}/lib:${LIBRARY_PATH:-}"
           DYLD_LIBRARY_PATH="${GNATCOLL_PYTHON_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
 
@@ -302,10 +316,32 @@ jobs:
         run: |
           set -euxo pipefail
           source .ci/alire-env.sh
-          export GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
-          export ADA_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${ADA_PROJECT_PATH:-}"
+
+          ALIRE_EXTRA_PATHS=""
+          for p in $(echo "${GPR_PROJECT_PATH}" | tr ':' ' '); do
+            [ -d "${p}" ] || continue
+            parent="$(dirname "${p}")"
+            if ls "${parent}"/*.gpr >/dev/null 2>&1; then
+              ALIRE_EXTRA_PATHS="${ALIRE_EXTRA_PATHS}:${parent}"
+            fi
+            grandparent="$(dirname "${parent}")"
+            if [ "${grandparent}" != "${parent}" ] && ls "${grandparent}"/*.gpr >/dev/null 2>&1; then
+              ALIRE_EXTRA_PATHS="${ALIRE_EXTRA_PATHS}:${grandparent}"
+            fi
+          done
+          echo "ALIRE_EXTRA_PATHS=${ALIRE_EXTRA_PATHS}"
+
+          export GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr${ALIRE_EXTRA_PATHS}:${GPR_PROJECT_PATH:-}"
+          export ADA_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr${ALIRE_EXTRA_PATHS}:${ADA_PROJECT_PATH:-}"
           export LIBRARY_TYPE=static
           export PATH="${PYTHON_PREFIX}/bin:${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
+
+          echo "--- GPR_PROJECT_PATH ---"
+          echo "${GPR_PROJECT_PATH}" | tr ':' '\n'
+          echo "--- Searching for xmlada.gpr ---"
+          find "${HOME}/.local/share/alire/builds" -name "xmlada.gpr" 2>/dev/null
+          echo "--- Searching for gtkada.gpr ---"
+          find "${HOME}/.local/share/alire/builds" -name "gtkada.gpr" 2>/dev/null
 
           ./configure \
             --prefix="$GITHUB_WORKSPACE/_install" \
