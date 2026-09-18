@@ -413,10 +413,7 @@ jobs:
           echo "Building gtkada in ${GTKADA_DIR}"
           cd "${GTKADA_DIR}"
 
-          cat > /tmp/gtkada_ext.adc <<'EOF'
-          pragma Extensions_Allowed (On);
-          EOF
-
+          echo 'pragma Extensions_Allowed (All_Extensions);' > /tmp/gtkada_ext.adc
           gprbuild -j"$(sysctl -n hw.ncpu)" -p -Pgtkada.gpr \
             -XXMLADA_BUILD=relocatable \
             -XLIBRARY_TYPE=relocatable \
