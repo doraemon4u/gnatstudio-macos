@@ -418,9 +418,9 @@ jobs:
           echo "=== Before ==="
           grep -n "Switches" "${SHARED_GPR}" | head -5
 
-          sed -i.bak 's/for Compiler_Switches ("ada") use/for Compiler_Switches ("ada") use ("-gnatX",/' "${SHARED_GPR}"
-          sed -i.bak 's/for Default_Switches ("ada") use/for Default_Switches ("ada") use ("-gnatX",/' "${SHARED_GPR}"
-          sed -i.bak 's/for Switches ("ada") use/for Switches ("ada") use ("-gnatX",/' "${SHARED_GPR}"
+          sed -i.bak 's/for Compiler_Switches ("Ada") use/for Compiler_Switches ("Ada") use ("-gnatX",/' "${SHARED_GPR}"
+          sed -i.bak 's/for Default_Switches ("Ada") use/for Default_Switches ("Ada") use ("-gnatX",/' "${SHARED_GPR}"
+          sed -i.bak 's/for Switches ("Ada") use/for Switches ("Ada") use ("-gnatX",/' "${SHARED_GPR}"
 
           echo "=== After ==="
           grep -n "gnatX" "${SHARED_GPR}" || echo "(gnatX NOT found!)"
