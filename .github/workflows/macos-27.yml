@@ -413,11 +413,8 @@ jobs:
           echo "Building gtkada in ${GTKADA_DIR}"
           cd "${GTKADA_DIR}"
 
-          # Create a GNAT config pragma file to force extensions mode.
-          # -gnatX on the command line is overridden by gtkada.gpr's
-          # Compiler.Default_Switches; -gnatec takes precedence.
           cat > /tmp/gtkada_ext.adc <<'EOF'
-          pragma Extensions_Allowed (True);
+          pragma Extensions_Allowed (On);
           EOF
 
           gprbuild -j"$(sysctl -n hw.ncpu)" -p -Pgtkada.gpr \
