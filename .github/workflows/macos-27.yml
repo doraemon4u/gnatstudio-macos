@@ -347,7 +347,8 @@ jobs:
           "${PYTHON_PREFIX}/bin/pip3" install setuptools 2>/dev/null || \
           "${PYTHON_PREFIX}/bin/python" -m pip install setuptools 2>/dev/null || true
           SITE_PKG=$("${PYTHON_PREFIX}/bin/python" -c "import site; print(site.getsitepackages()[0])")
-          echo "import setuptools" > "${SITE_PKG}/distutils_shim.pth"
+          rm -f "${SITE_PKG}/distutils_shim.pth"
+          printf 'import setuptools\n' > "${SITE_PKG}/sitecustomize.py"
 
           ./configure             --prefix="$GITHUB_WORKSPACE/_install"
 
