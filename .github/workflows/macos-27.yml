@@ -286,6 +286,19 @@ jobs:
           echo "--- Final GPR_PROJECT_PATH ---"
           echo "${GPR_PROJECT_PATH}" | tr ':' '\n'
 
+          # Alire source-only cache: gprls (AM_PATH_GTKADA) needs obj/lib dirs that only exist after building
+          echo "--- Creating missing build directories for GPR projects ---"
+          for gtkada_src in $(find "${HOME}/.local/share/alire/builds" -path "*/gtkada_*/src" -type d 2>/dev/null); do
+            mkdir -p "${gtkada_src}/obj/gtkada/relocatable"
+            mkdir -p "${gtkada_src}/lib/gtkada/relocatable"
+          done
+          for xmlada_dir in $(find "${HOME}/.local/share/alire/builds" -path "*/xmlada_*" -type d -mindepth 1 -maxdepth 1 2>/dev/null); do
+            for subdir in input_sources unicode sax dom schema xmlada; do
+              mkdir -p "${xmlada_dir}/obj/${subdir}/relocatable"
+              mkdir -p "${xmlada_dir}/lib/${subdir}/relocatable"
+            done
+          done
+
       - name: Build GNATcoll Python 3 binding
         shell: bash
         run: |
