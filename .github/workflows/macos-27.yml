@@ -343,9 +343,9 @@ jobs:
           sed -i '' 's|HAVE_GNAT_PROJECT_gtkada=no|HAVE_GNAT_PROJECT_gtkada=yes|g' configure
           sed -i '' '/Test for GtkAda failed/s/as_fn_error \$?.*/true; #/' configure
 
-          # Python 3.12+ removed distutils; install setuptools into the Homebrew Python
+          ln -sfn "${PYTHON_PREFIX}/bin/python${PYTHON_VERSION}" "${PYTHON_PREFIX}/bin/python"
           "${PYTHON_PREFIX}/bin/pip3" install setuptools 2>/dev/null || \
-          python3 -m pip install setuptools 2>/dev/null || true
+          "${PYTHON_PREFIX}/bin/python" -m pip install setuptools 2>/dev/null || true
 
           ./configure             --prefix="$GITHUB_WORKSPACE/_install"
 
