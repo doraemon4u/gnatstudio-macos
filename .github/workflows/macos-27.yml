@@ -298,8 +298,6 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-
-          source .ci/alire-env.sh
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
 
           ./configure             --prefix="$GITHUB_WORKSPACE/_install"             --disable-shared
@@ -308,7 +306,6 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          source .ci/alire-env.sh
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
           export MACOSX_DEPLOYMENT_TARGET=27.0
 
@@ -318,7 +315,6 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          source .ci/alire-env.sh
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
 
           make install-strip prefix="$GITHUB_WORKSPACE/_install"
