@@ -3,7 +3,7 @@ name: GNAT Studio - macOS 27 ARM64
 on:
   workflow_dispatch:
   push:
-    branches: [master]
+    branches: [main]
     tags: ['v*']
 
 permissions:
