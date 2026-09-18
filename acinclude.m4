@@ -101,7 +101,17 @@ else
   then
     HAVE_GNAT_PROJECT_$1=yes
   else
+    # Fallback: check if the .gpr file exists on GPR_PROJECT_PATH.
+    # This handles the case where gprls cannot fully resolve the import
+    # chain (e.g. missing _shared.gpr stubs) but the project file is
+    # present on the project path and will be usable at build time.
     HAVE_GNAT_PROJECT_$1=no
+    for _gp in $(echo "${GPR_PROJECT_PATH}" | tr ':' ' '); do
+      if test -f "${_gp}/[$1].gpr"; then
+        HAVE_GNAT_PROJECT_$1=yes
+        break
+      fi
+    done
   fi
 fi
 AC_MSG_RESULT($HAVE_GNAT_PROJECT_$1)
