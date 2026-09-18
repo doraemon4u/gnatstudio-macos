@@ -407,20 +407,22 @@ jobs:
           set -euxo pipefail
           source .ci/alire-env.sh
           export GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
-          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
+          # PYTHON_PREFIX first so python3 resolves to 3.13, not 3.14 from brew
+          export PATH="${PYTHON_PREFIX}/bin:${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${ALIRE_PREFIX}/bin:${PATH}"
 
           SHARED_GPR=$(find "${HOME}/.local/share/alire/builds" -path "*/gtkada_*/gtkada_shared.gpr" -type f 2>/dev/null | head -1)
           GTKADA_GPR=$(find "${HOME}/.local/share/alire/builds" -path "*/gtkada_*/src/gtkada.gpr" -type f 2>/dev/null | head -1)
           GTKADA_SRC=$(dirname "${GTKADA_GPR}")
           echo "GtkAda GPR: ${GTKADA_GPR}"
           echo "Shared GPR: ${SHARED_GPR}"
-          cd "${GTKADA_SRC}"
 
-          # Inject -gnatX into gtkada_shared.gpr (handles multi-line use clauses)
-          python3 .ci/patch_gnatx.py "${SHARED_GPR}"
+          # Inject -gnatX BEFORE cd — script lives in the repo, not in GtkAda src
+          python3 "${GITHUB_WORKSPACE}/.ci/patch_gnatx.py" "${SHARED_GPR}"
 
           echo "=== Verify -gnatX injection ==="
           grep -n "gnatX" "${SHARED_GPR}" || echo "(gnatX NOT found!)"
+
+          cd "${GTKADA_SRC}"
 
           gprbuild -j"$(sysctl -n hw.ncpu)" -p -P"${GTKADA_GPR}" \
             -XXMLADA_BUILD=relocatable \
