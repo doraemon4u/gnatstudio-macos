@@ -429,10 +429,10 @@ jobs:
           grep -n "gnatX" "${SHARED_GPR}" || echo "(gnatX NOT found!)"
 
           cd "${GTKADA_SRC}"
-          gprbuild -j"$(sysctl -n hw.ncpu)" -p -P"${GTKADA_GPR}" \
+          gprbuild -v -j"$(sysctl -n hw.ncpu)" -p -P"${GTKADA_GPR}" \
             -XXMLADA_BUILD=relocatable \
             -XLIBRARY_TYPE=relocatable \
-            -XBUILD=Production
+            -XBUILD=Production 2>&1 | tail -50
 
       - name: Regenerate configure (update ax_python_devel.m4)
         shell: bash
