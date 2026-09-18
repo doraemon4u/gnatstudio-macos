@@ -194,7 +194,7 @@ jobs:
           mkdir -p .ci/gnatstudio-deps
           cd .ci/gnatstudio-deps
 
-          alr init --bin gnatstudio-deps
+          alr init --bin gnatstudiodeps
 
           # Alire invokes bare `brew`; the wrapper above is therefore the
           # actual fix for the ARM/Rosetta issue.
