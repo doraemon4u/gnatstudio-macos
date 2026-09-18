@@ -341,7 +341,13 @@ jobs:
           # Bypass configure's project checks: sed the simple HAVE_GNAT_PROJECT checks
           sed -i '' 's|HAVE_GNAT_PROJECT_xmlada=no|HAVE_GNAT_PROJECT_xmlada=yes|g' configure
           sed -i '' 's|HAVE_GNAT_PROJECT_gtkada=no|HAVE_GNAT_PROJECT_gtkada=yes|g' configure
-          sed -i '' '/Test for GtkAda failed/s/as_fn_error/as_fn_warn/' configure
+          sed -i '' '/Test for GtkAda failed/s/as_fn_error \$?.*/true; #/' configure
+
+          # Python 3.12+ removed distutils; setuptools provides the shim
+          "${PYTHON_PREFIX}/bin/pip3" install setuptools 2>/dev/null || \
+          python3 -m pip install setuptools 2>/dev/null || true
+          sed -i '' '/import distutils/{ N; s|cannot import Python module .distutils.\n.*|cannot import Python module \"distutils\". (skipped)|; }' configure
+          sed -i '' 's|ac_distutils_result=`.*distutils.*`|ac_distutils_result=ok|' configure
 
           ./configure             --prefix="$GITHUB_WORKSPACE/_install"
 
