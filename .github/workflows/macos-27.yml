@@ -416,7 +416,8 @@ jobs:
           gprbuild -j"$(sysctl -n hw.ncpu)" -p -Pgtkada.gpr \
             -XXMLADA_BUILD=relocatable \
             -XLIBRARY_TYPE=relocatable \
-            -XBUILD=Production
+            -XBUILD=Production \
+            -cargs -gnatX
 
       - name: Regenerate configure (update ax_python_devel.m4)
         shell: bash
