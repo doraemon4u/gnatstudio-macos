@@ -414,7 +414,10 @@ jobs:
           cd "${GTKADA_DIR}"
 
           SHARED_GPR=$(find "${GTKADA_DIR}" -name "gtkada_shared.gpr" -type f 2>/dev/null | head -1)
+          GTKADA_GPR=$(find "${GTKADA_DIR}" -name "gtkada.gpr" -type f 2>/dev/null | head -1)
+          GTKADA_SRC=$(dirname "${GTKADA_GPR}")
           echo "Patching: ${SHARED_GPR}"
+          echo "Building from: ${GTKADA_SRC}"
           echo "=== Before ==="
           grep -n "Switches" "${SHARED_GPR}" | head -5
 
@@ -425,7 +428,8 @@ jobs:
           echo "=== After ==="
           grep -n "gnatX" "${SHARED_GPR}" || echo "(gnatX NOT found!)"
 
-          gprbuild -j"$(sysctl -n hw.ncpu)" -p -Pgtkada.gpr \
+          cd "${GTKADA_SRC}"
+          gprbuild -j"$(sysctl -n hw.ncpu)" -p -P"${GTKADA_GPR}" \
             -XXMLADA_BUILD=relocatable \
             -XLIBRARY_TYPE=relocatable \
             -XBUILD=Production
