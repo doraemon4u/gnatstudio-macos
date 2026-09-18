@@ -1,82 +1,43 @@
 #!/bin/bash
+set -e
 
-tmp=$(cd ${0%/*} && echo `pwd -P`/${0##*/})
-lnk=`readlink $tmp`
+# Resolve Contents/MacOS even when launched through a symlink.
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+bundle_mac="$script_dir"
+bundle="$(cd -- "$bundle_mac/.." && pwd -P)"
 
-if [ x$lnk != x ]; then
-   tmp=$lnk
-fi
-
-tmp=`dirname "$tmp"`
-tmp=`dirname "$tmp"`
-bundle=`dirname "$tmp"`
-bundle_mac="${bundle}"/Contents/MacOS
-
-# Just in case ...
 unset GPS_PYTHONHOME
 export LC_ALL="C"
 
-# amend the path
-PATH=${bundle_mac}/bin:$PATH
-export PATH
+# Keep the application self-contained for GTK/Python runtime libraries.
+export PATH="$bundle_mac/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+export DYLD_LIBRARY_PATH="$bundle_mac/lib:$bundle/Frameworks:${DYLD_LIBRARY_PATH:-}"
 
-# Search for GPS's preference folder
-PREFS=$HOME/Library/Application\ Support/AdaCore/GPS
-if [ ! -d "${PREFS}" ]; then
-    mkdir -p "${PREFS}"
-fi
+# GNAT Studio's Python bridge can use this bundled Python home. The directory
+# contains a lib/pythonX.Y symlink to the runtime copied into Contents/MacOS/lib.
+export GNATSTUDIO_PYTHONHOME="${GNATSTUDIO_PYTHONHOME:-$bundle_mac/share/gnatstudio/python}"
 
-# setup pixbuf modules and use GPS's pref folder to store gdk_pixbuf loaders
-# cache file (the bundle might be read-only).
-# Note: We need to update it for each startup because the bundle may have been
-# moved from one launch to the other.
+# Search for GNAT Studio's preference folder.
+PREFS="$HOME/Library/Application Support/AdaCore/GPS"
+mkdir -p "$PREFS"
+
+# The bundle can be read-only, so keep the generated loader cache outside it.
 pixbuf_base="$bundle_mac/lib/gdk-pixbuf-2.0/2.10.0"
-GDK_PIXBUF_MODULE_FILE="${PREFS}/pixbuf_loaders.cache"
+GDK_PIXBUF_MODULE_FILE="$PREFS/pixbuf_loaders.cache"
 GDK_PIXBUF_MODULEDIR="$pixbuf_base/loaders"
 export GDK_PIXBUF_MODULE_FILE GDK_PIXBUF_MODULEDIR
 
-# and update pixbuf cache
-DYLD_LIBRARY_PATH="${bundle_mac}/lib":$DYLD_LIBRARY_PATH \
-    "${bundle_mac}"/bin/gdk-pixbuf-query-loaders > "${GDK_PIXBUF_MODULE_FILE}"
-echo "${GDK_PIXBUF_MODULE_FILE}" > /tmp/gps
-
-# At this stage, everything's ready to launch gps.
-
-useshell=0
-
-# Strip out the argument added by the OS (until 10.9).
-echo "$1" | grep "\-psn_*" > /dev/null
-if [ $? == 0 ]; then
-    shift 1
+if [[ -x "$bundle_mac/bin/gdk-pixbuf-query-loaders" ]]; then
+    "$bundle_mac/bin/gdk-pixbuf-query-loaders" > "$GDK_PIXBUF_MODULE_FILE"
 fi
 
-# in case GPS is launched by the OS, we need to explicitely
-# run it through the default user's shell to properly initialize
-# its environment (e.g. source .bash_profile)
-if [ $SHLVL == 1 ]; then
-    useshell=1
-fi
-
-# Protect arguments with spaces, and handle the -pwd switch given by the
-# gps command-line wrapper
-i=0
+# Preserve the current directory wrapper convention used by GNAT Studio.
 argv=()
 for arg in "$@"; do
     case "$arg" in
-        -pwd*) cd "`echo "$arg" | sed -e 's,-pwd,,'`";;
-        *)     argv[$i]="$arg" ;;
+        -pwd*) cd "${arg#-pwd}" ;;
+        *) argv+=("$arg") ;;
     esac
-    i=$((i + 1))
 done
 
-# use the user's default shell
-if [ x$useshell == x1 ]; then
-  ME=`whoami`
-  SH=`dscl localhost -read /Local/Default/Users/$ME shell | cut -d " " -f 2`
-  if [ x"$SH" == x ]; then
-      SH=/bin/bash
-  fi
-  $SH -l -c "$bundle_mac/bin/gps" "${argv[@]}"
-else
-  "$bundle_mac/bin/gps" "${argv[@]}"
-fi
+exec "$bundle_mac/bin/gnatstudio_exe" "${argv[@]}"

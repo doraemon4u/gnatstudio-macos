@@ -1,17 +1,17 @@
 #!/bin/bash
+set -e
 
 argv=()
 argv[0]="-pwd$PWD"
 i=1
-directlaunch=0
 
-# making sure file paths are preserved, by using their full path
+# Preserve file paths by expanding them to absolute paths.
 for arg in "$@"; do
     case "$arg" in
       -*) argv[$i]="$arg" ;;
-      *)  argv[$i]="`echo $(cd $(dirname "$arg"); pwd)/$(basename "$arg")`" ;;
+      *)  argv[$i]="$(cd "$(dirname "$arg")" && pwd)/$(basename "$arg")" ;;
     esac
     i=$((i + 1))
 done
 
-open -a GPS -n -W --args "${argv[@]}"
+open -a "GNAT Studio" -n -W --args "${argv[@]}"

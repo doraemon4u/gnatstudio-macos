@@ -8,9 +8,7 @@
 	<array>
 		<dict>
 			<key>CFBundleTypeExtensions</key>
-			<array>
-				<string>gpr</string>
-			</array>
+			<array><string>gpr</string></array>
 			<key>CFBundleTypeIconFile</key>
 			<string>gpr.icns</string>
 			<key>CFBundleTypeName</key>
@@ -22,45 +20,39 @@
 		</dict>
 		<dict>
 			<key>CFBundleTypeExtensions</key>
-			<array>
-				<string>ads</string>
-			</array>
+			<array><string>ads</string></array>
 			<key>CFBundleTypeIconFile</key>
 			<string>ads.icns</string>
 			<key>CFBundleTypeName</key>
 			<string>Ada Specification</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
-                        <key>LSHandlerRank</key>
-                        <string>Owner</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
 		</dict>
 		<dict>
 			<key>CFBundleTypeExtensions</key>
-			<array>
-				<string>adb</string>
-			</array>
+			<array><string>adb</string></array>
 			<key>CFBundleTypeIconFile</key>
 			<string>adb.icns</string>
 			<key>CFBundleTypeName</key>
 			<string>Ada Body</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
-                        <key>LSHandlerRank</key>
-                        <string>Owner</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
 		</dict>
 		<dict>
 			<key>CFBundleTypeExtensions</key>
-			<array>
-				<string>ada</string>
-			</array>
+			<array><string>ada</string></array>
 			<key>CFBundleTypeIconFile</key>
 			<string>ada.icns</string>
 			<key>CFBundleTypeName</key>
 			<string>Ada File</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
-                        <key>LSHandlerRank</key>
-                        <string>Owner</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
 		</dict>
 	</array>
 	<key>CFBundleExecutable</key>
@@ -72,22 +64,24 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>GPS</string>
+	<string>GNAT Studio</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>5.1.0</string>
+	<string>@GPS_VERSION@</string>
 	<key>CFBundleSignature</key>
 	<string>ADAC</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>@GPS_VERSION@</string>
 	<key>LSArchitecturePriority</key>
 	<array>
-		<string>x86_64</string>
+		<string>arm64</string>
 	</array>
 	<key>LSMinimumSystemVersion</key>
-	<string>10.9.0</string>
+	<string>27.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2001-2011 AdaCore</string>
+	<string>Copyright © AdaCore</string>
 </dict>
 </plist>

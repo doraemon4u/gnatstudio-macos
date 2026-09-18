@@ -1,0 +1,552 @@
+--- a/osx_bundle/Makefile.in
++++ b/osx_bundle/Makefile.in
+@@ -1,105 +1,94 @@
+-PREFIX:=$(PWD)
+-TOP:=$(PWD)
+-GTK_PREFIX=@GTK_PREFIX@
+-GPS_VERSION=@GPS_VERSION@
+-GPS_VERSION_NUM=$(shell echo $(GPS_VERSION) | sed -e 's/\([0-9.]*\).*/\1/')
+-
+-APP:=GPS.app
+-PKG:=GPS-$(GPS_VERSION).pkg
+-DMG:=GPS-$(GPS_VERSION).dmg
++SHELL:=/bin/bash
+ 
+-contents=$(TOP)/_build/Applications/$(APP)/Contents
++TOP:=$(CURDIR)
++PREFIX?=$(TOP)/_bundle
++GTK_PREFIX?=@GTK_PREFIX@
++GPS_VERSION?=@GPS_VERSION@
++PYTHON?=python3
++
++APP:=GNAT Studio.app
++DMG:=GNAT-Studio-$(GPS_VERSION)-macos27-arm64.dmg
++
++contents=$(PREFIX)/$(APP)/Contents
+ root=$(contents)/MacOS
+ bin=$(root)/bin
+ etc=$(root)/etc
+ lib=$(root)/lib
+ share=$(root)/share
+-inc=$(root)/include
++frameworks=$(contents)/Frameworks
++resources=$(contents)/Resources
++
++auto-install-dirs: force
++	mkdir -p "$(contents)" "$(root)" "$(bin)" "$(lib)" "$(etc)" "$(frameworks)"
++
++.PHONY: all app dmg clean force auto-install-dirs
+ 
+-all: pkg
++all: dmg
+ 
+-pkg: $(PREFIX)/$(PKG)
++app: $(PREFIX)/$(APP)
+ 
+ dmg: $(PREFIX)/$(DMG)
+ 
+ clean:
+-	rm -rf *.dmg GPS.app
++	rm -rf "$(PREFIX)/$(APP)" "$(PREFIX)/$(DMG)" "$(PREFIX)/_dmgroot"
+ 
+-.PHONY: force
+-$(PREFIX)/$(DMG): $(PREFIX)/$(PKG)
+-# create dmg image
+-	cd $(PREFIX) && \
+-	  sh $(TOP)/scripts/dodmg.sh GPS $(GPS_VERSION) $(TOP)
+-	rm -f $(PREFIX)/$(PKG)
+-
+-$(PREFIX)/$(PKG): force
+-	rm -rf _build
+-# prepare the OSX Application structure
+-	mkdir -p $(contents)
+-	mkdir -p $(root)
+-	mkdir -p $(lib)
+-	mkdir -p $(inc)
+-	mkdir -p $(etc)
+-	cp -r Resources $(contents)
+-	cp srcs/Info.plist $(contents)
+-	cp srcs/gps_bundle_main $(root)/gps
+-
+-# install gps
+-	make -C .. install-strip prefix=$(root)
+-	find $(contents) -d -name .svn -exec rm -rf {} \\\;
+-# install gtk data files
+-	cp -r $(GTK_PREFIX)/lib/girepository-1.0 $(lib)
+-	cp -r $(GTK_PREFIX)/lib/gio $(lib)
+-	cp -r $(GTK_PREFIX)/lib/gdk-pixbuf-2.0 $(lib)
+-	cp -r $(GTK_PREFIX)/lib/gtk-3.0 $(lib)
+-	rm $(lib)/gdk-pixbuf-2.0/*/loaders.cache
+-	mkdir -p $(etc)/gtk-3.0
+-	cp srcs/settings.ini $(etc)/gtk-3.0/
+-	-cp -r $(GTK_PREFIX)/etc/pango $(etc)
+-# install gtk binaries and libraries
+-	python ./scripts/install.py $(root) \
+-	  $(GTK_PREFIX)/bin/gdk-pixbuf-query-loaders \
+-	  $(bin)/gps_exe \
+-	  $(lib)/gdk-pixbuf-2.0/2.10.0/loaders/*.so \
+-	  $(GTK_PREFIX)/lib/libgirepository*.dylib \
+-	  $(GTK_PREFIX)/lib/libpyglib*.dylib
+-
+-# install python run-time
+-	cp -r $(GTK_PREFIX)/lib/python2.7 $(lib)
+-	cp -r $(GTK_PREFIX)/include/python2.7 $(inc)
+-# cleanup and strip libraries and python run-time
+-	find $(lib) -name \*.dylib -exec strip -S - {} \\\;
+-	find $(lib) -name \*.py[co] -exec rm {} \\\;
+-	find $(lib) -name \*.la -exec rm {} \\\;
+-# share dir
+-	mkdir -p $(share)/themes
+-	cp -r $(GTK_PREFIX)/share/themes/* $(share)/themes/
+-	mkdir -p $(share)/locale
+-	-cp -r $(GTK_PREFIX)/share/locale/* $(share)/locale/
+-	mkdir -p $(share)/icons
+-	-cp -r $(GTK_PREFIX)/share/icons/* $(share)/icons/
+-	mkdir -p $(share)/glib-2.0
+-	-cp -r $(GTK_PREFIX)/share/glib-2.0/schemas $(share)/glib-2.0
+-# Now that the app has been created, let's package it
+-# The gps.app package
+-	pkgbuild --root _build/Applications \
+-	         --version $(GPS_VERSION_NUM) \
+-	         --identifier com.adacore.gps \
+-	         _build/gps.pkg
+-
+-# The command line handling package
+-	mkdir -p _build/bin
+-	cp srcs/gps_command_line _build/bin/gps
+-	chmod a+x _build/bin/gps
+-	pkgbuild --root _build/bin \
+-	         --version $(GPS_VERSION_NUM) \
+-	         --identifier com.adacore.gpscmdlin \
+-	         _build/gpscmdlin.pkg
+-# The end product, allowing custom install
+-	mkdir -p _build/resources
+-	cp srcs/background.png _build/resources/background.png
+-	productbuild --distribution srcs/gps.dist \
+-	             --resources _build/resources \
+-	             --package-path _build \
+-	             $(PREFIX)/$(PKG)
+-	rm -rf _build
++$(PREFIX)/$(APP): force
++	rm -rf "$(PREFIX)/$(APP)"
++	mkdir -p "$(resources)" "$(root)" "$(bin)" "$(lib)" "$(etc)" "$(frameworks)"
++	cp -R "$(TOP)/Resources/." "$(resources)/"
++	$(PYTHON) -c 'from pathlib import Path; p=Path("$(contents)/Info.plist"); p.write_text(Path("$(TOP)/srcs/Info.plist").read_text().replace("@GPS_VERSION@", "$(GPS_VERSION)"))'
++	install -m 755 "$(TOP)/srcs/gps_bundle_main" "$(root)/gps"
++
++	# Install GNAT Studio itself.
++	$(MAKE) -C "$(TOP)/.." install-strip prefix="$(root)" PYTHON="$(PYTHON)"
++	find "$(contents)" -name .svn -type d -prune -exec rm -rf {} +
++
++	# GTK runtime data.
++	if [[ -d "$(GTK_PREFIX)/lib/girepository-1.0" ]]; then cp -R "$(GTK_PREFIX)/lib/girepository-1.0" "$(lib)/"; fi
++	if [[ -d "$(GTK_PREFIX)/lib/gio" ]]; then cp -R "$(GTK_PREFIX)/lib/gio" "$(lib)/"; fi
++	if [[ -d "$(GTK_PREFIX)/lib/gdk-pixbuf-2.0" ]]; then cp -R "$(GTK_PREFIX)/lib/gdk-pixbuf-2.0" "$(lib)/"; fi
++	if [[ -d "$(GTK_PREFIX)/lib/gtk-3.0" ]]; then cp -R "$(GTK_PREFIX)/lib/gtk-3.0" "$(lib)/"; fi
++	mkdir -p "$(lib)/gdk-pixbuf-2.0/2.10.0/loaders"
++	if [[ -d "$(GTK_PREFIX)/lib/gdk-pixbuf-2.0/2.10.0/loaders" ]]; then cp -R "$(GTK_PREFIX)/lib/gdk-pixbuf-2.0/2.10.0/loaders/." "$(lib)/gdk-pixbuf-2.0/2.10.0/loaders/"; fi
++	if [[ -x "$(GTK_PREFIX)/bin/gdk-pixbuf-query-loaders" ]]; then install -m 755 "$(GTK_PREFIX)/bin/gdk-pixbuf-query-loaders" "$(bin)/"; fi
++	if [[ -f "$(GTK_PREFIX)/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache" ]]; then rm -f "$(lib)/gdk-pixbuf-2.0"/*/loaders.cache; fi
++	mkdir -p "$(etc)/gtk-3.0"
++	cp "$(TOP)/srcs/settings.ini" "$(etc)/gtk-3.0/"
++	if [[ -d "$(GTK_PREFIX)/etc/pango" ]]; then cp -R "$(GTK_PREFIX)/etc/pango" "$(etc)/"; fi
++
++	# GTK utilities and Python extensions are repaired after installation by
++	# dylibbundler. Keep the runtime in the same lib/ tree as the executable.
++	$(PYTHON) "$(TOP)/scripts/bundle_python.py" "$(root)/lib" "$(PYTHON)"
++
++	# GTK data used at runtime.
++	mkdir -p "$(share)/themes" "$(share)/locale" "$(share)/icons" "$(share)/glib-2.0"
++	if [[ -d "$(GTK_PREFIX)/share/themes" ]]; then cp -R "$(GTK_PREFIX)/share/themes/." "$(share)/themes/"; fi
++	if [[ -d "$(GTK_PREFIX)/share/locale" ]]; then cp -R "$(GTK_PREFIX)/share/locale/." "$(share)/locale/"; fi
++	if [[ -d "$(GTK_PREFIX)/share/icons" ]]; then cp -R "$(GTK_PREFIX)/share/icons/." "$(share)/icons/"; fi
++	if [[ -d "$(GTK_PREFIX)/share/glib-2.0/schemas" ]]; then cp -R "$(GTK_PREFIX)/share/glib-2.0/schemas" "$(share)/glib-2.0/"; fi
++
++	# Pull all external Mach-O dependencies into Contents/Frameworks and rewrite
++	# their load commands to use a bundle-relative install name.
++	bash "$(TOP)/scripts/bundle_dylibs.sh" \
++		"$(root)" \
++		"$(frameworks)"
++
++	# Strip linker/build-system leftovers which are never needed at runtime.
++	find "$(contents)" -type f \( -name '*.la' -o -name '*.pyc' \) -delete
++	find "$(contents)" -type d -name '__pycache__' -prune -exec rm -rf {} +
++
++	# Ad-hoc signing makes the unsigned local build loadable on a normal macOS
++	# installation. Replace with Developer ID signing in a release workflow.
++	/usr/bin/codesign --force --deep --sign - "$(PREFIX)/$(APP)"
++
++$(PREFIX)/$(DMG): $(PREFIX)/$(APP)
++	rm -rf "$(PREFIX)/_dmgroot"
++	mkdir -p "$(PREFIX)/_dmgroot"
++	cp -R "$(PREFIX)/$(APP)" "$(PREFIX)/_dmgroot/"
++	hdiutil create \
++		-volname "GNAT Studio" \
++		-srcfolder "$(PREFIX)/_dmgroot" \
++		-ov \
++		-format UDBZ \
++		"$(PREFIX)/$(DMG)"
++	rm -rf "$(PREFIX)/_dmgroot"
+--- a/osx_bundle/srcs/Info.plist
++++ b/osx_bundle/srcs/Info.plist
+@@ -8,9 +8,7 @@
+ 	<array>
+ 		<dict>
+ 			<key>CFBundleTypeExtensions</key>
+-			<array>
+-				<string>gpr</string>
+-			</array>
++			<array><string>gpr</string></array>
+ 			<key>CFBundleTypeIconFile</key>
+ 			<string>gpr.icns</string>
+ 			<key>CFBundleTypeName</key>
+@@ -22,45 +20,39 @@
+ 		</dict>
+ 		<dict>
+ 			<key>CFBundleTypeExtensions</key>
+-			<array>
+-				<string>ads</string>
+-			</array>
++			<array><string>ads</string></array>
+ 			<key>CFBundleTypeIconFile</key>
+ 			<string>ads.icns</string>
+ 			<key>CFBundleTypeName</key>
+ 			<string>Ada Specification</string>
+ 			<key>CFBundleTypeRole</key>
+ 			<string>Editor</string>
+-                        <key>LSHandlerRank</key>
+-                        <string>Owner</string>
++			<key>LSHandlerRank</key>
++			<string>Owner</string>
+ 		</dict>
+ 		<dict>
+ 			<key>CFBundleTypeExtensions</key>
+-			<array>
+-				<string>adb</string>
+-			</array>
++			<array><string>adb</string></array>
+ 			<key>CFBundleTypeIconFile</key>
+ 			<string>adb.icns</string>
+ 			<key>CFBundleTypeName</key>
+ 			<string>Ada Body</string>
+ 			<key>CFBundleTypeRole</key>
+ 			<string>Editor</string>
+-                        <key>LSHandlerRank</key>
+-                        <string>Owner</string>
++			<key>LSHandlerRank</key>
++			<string>Owner</string>
+ 		</dict>
+ 		<dict>
+ 			<key>CFBundleTypeExtensions</key>
+-			<array>
+-				<string>ada</string>
+-			</array>
++			<array><string>ada</string></array>
+ 			<key>CFBundleTypeIconFile</key>
+ 			<string>ada.icns</string>
+ 			<key>CFBundleTypeName</key>
+ 			<string>Ada File</string>
+ 			<key>CFBundleTypeRole</key>
+ 			<string>Editor</string>
+-                        <key>LSHandlerRank</key>
+-                        <string>Owner</string>
++			<key>LSHandlerRank</key>
++			<string>Owner</string>
+ 		</dict>
+ 	</array>
+ 	<key>CFBundleExecutable</key>
+@@ -72,22 +64,24 @@
+ 	<key>CFBundleInfoDictionaryVersion</key>
+ 	<string>6.0</string>
+ 	<key>CFBundleName</key>
+-	<string>GPS</string>
++	<string>GNAT Studio</string>
+ 	<key>CFBundlePackageType</key>
+ 	<string>APPL</string>
+ 	<key>CFBundleShortVersionString</key>
+-	<string>5.1.0</string>
++	<string>@GPS_VERSION@</string>
+ 	<key>CFBundleSignature</key>
+ 	<string>ADAC</string>
+ 	<key>CFBundleVersion</key>
+-	<string>1</string>
++	<string>@GPS_VERSION@</string>
+ 	<key>LSArchitecturePriority</key>
+ 	<array>
+-		<string>x86_64</string>
++		<string>arm64</string>
+ 	</array>
+ 	<key>LSMinimumSystemVersion</key>
+-	<string>10.9.0</string>
++	<string>27.0</string>
++	<key>NSHighResolutionCapable</key>
++	<true/>
+ 	<key>NSHumanReadableCopyright</key>
+-	<string>Copyright © 2001-2011 AdaCore</string>
++	<string>Copyright © AdaCore</string>
+ </dict>
+ </plist>
+--- a/osx_bundle/srcs/gps_bundle_main
++++ b/osx_bundle/srcs/gps_bundle_main
+@@ -1,78 +1,43 @@
+ #!/bin/bash
++set -e
+ 
+-tmp=$(cd ${0%/*} && echo `pwd -P`/${0##*/})
+-lnk=`readlink $tmp`
++# Resolve Contents/MacOS even when launched through a symlink.
++script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
++bundle_mac="$script_dir"
++bundle="$(cd -- "$bundle_mac/.." && pwd -P)"
+ 
+-if [ x$lnk != x ]; then
+-   tmp=$lnk
+-fi
+-
+-tmp=`dirname "$tmp"`
+-tmp=`dirname "$tmp"`
+-bundle=`dirname "$tmp"`
+-bundle_mac="${bundle}"/Contents/MacOS
+-
+-# Just in case ...
+ unset GPS_PYTHONHOME
+ export LC_ALL="C"
+ 
+-# amend the path
+-PATH=${bundle_mac}/bin:$PATH
+-export PATH
+-
+-# Search for GPS's preference folder
+-PREFS=$HOME/Library/Application\ Support/AdaCore/GPS
+-if [ ! -d "${PREFS}" ]; then
+-    mkdir -p "${PREFS}"
+-fi
+-# setup pixbuf modules and use GPS's pref folder to store gdk_pixbuf loaders
+-# cache file (the bundle might be read-only).
+-# Note: We need to update it for each startup because the bundle may have been
+-# moved from one launch to the other.
++# Keep the application self-contained for GTK/Python runtime libraries.
++export PATH="$bundle_mac/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
++export DYLD_LIBRARY_PATH="$bundle_mac/lib:$bundle/Frameworks:${DYLD_LIBRARY_PATH:-}"
++
++# GNAT Studio's Python bridge can use this bundled Python home. The directory
++# contains a lib/pythonX.Y symlink to the runtime copied into Contents/MacOS/lib.
++export GNATSTUDIO_PYTHONHOME="${GNATSTUDIO_PYTHONHOME:-$bundle_mac/share/gnatstudio/python}"
++
++# Search for GNAT Studio's preference folder.
++PREFS="$HOME/Library/Application Support/AdaCore/GPS"
++mkdir -p "$PREFS"
++
++# The bundle can be read-only, so keep the generated loader cache outside it.
+ pixbuf_base="$bundle_mac/lib/gdk-pixbuf-2.0/2.10.0"
+-GDK_PIXBUF_MODULE_FILE="${PREFS}/pixbuf_loaders.cache"
++GDK_PIXBUF_MODULE_FILE="$PREFS/pixbuf_loaders.cache"
+ GDK_PIXBUF_MODULEDIR="$pixbuf_base/loaders"
+ export GDK_PIXBUF_MODULE_FILE GDK_PIXBUF_MODULEDIR
+-# and update pixbuf cache
+-DYLD_LIBRARY_PATH="${bundle_mac}/lib":$DYLD_LIBRARY_PATH \
+-    "${bundle_mac}"/bin/gdk-pixbuf-query-loaders > "${GDK_PIXBUF_MODULE_FILE}"
+-echo "${GDK_PIXBUF_MODULE_FILE}" > /tmp/gps
+-
+-# At this stage, everything's ready to launch gps.
+-
+-useshell=0
+-
+-# Strip out the argument added by the OS (until 10.9).
+-echo "$1" | grep "\\-psn_*" > /dev/null
+-if [ $? == 0 ]; then
+-    shift 1
+-fi
+-# in case GPS is launched by the OS, we need to explicitely
+-# run it through the default user's shell to properly initialize
+-# its environment (e.g. source .bash_profile)
+-if [ $SHLVL == 1 ]; then
+-    useshell=1
++
++if [[ -x "$bundle_mac/bin/gdk-pixbuf-query-loaders" ]]; then
++    "$bundle_mac/bin/gdk-pixbuf-query-loaders" > "$GDK_PIXBUF_MODULE_FILE"
+ fi
+ 
+-# Protect arguments with spaces, and handle the -pwd switch given by the
+-# gps command-line wrapper
+-i=0
++# Preserve the current directory wrapper convention used by GNAT Studio.
+ argv=()
+ for arg in "$@"; do
+     case "$arg" in
+-        -pwd*) cd "`echo "$arg" | sed -e 's,-pwd,,'`";;
+-        *)     argv[$i]="$arg" ;;
++        -pwd*) cd "${arg#-pwd}" ;;
++        *) argv+=("$arg") ;;
+     esac
+-    i=$((i + 1))
+ done
+-# use the user's default shell
+-if [ x$useshell == x1 ]; then
+-  ME=`whoami`
+-  SH=`dscl localhost -read /Local/Default/Users/$ME shell | cut -d " " -f 2`
+-  if [ x"$SH" == x ]; then
+-      SH=/bin/bash
+-  fi
+-  $SH -l -c "$bundle_mac/bin/gps" "${argv[@]}"
+-else
+-  "$bundle_mac/bin/gps" "${argv[@]}"
+-fi
++
++exec "$bundle_mac/bin/gnatstudio_exe" "${argv[@]}"
+--- a/osx_bundle/srcs/gps_command_line
++++ b/osx_bundle/srcs/gps_command_line
+@@ -1,17 +1,17 @@
+ #!/bin/bash
++set -e
+ 
+ argv=()
+ argv[0]="-pwd$PWD"
+ i=1
+-directlaunch=0
+ 
+-# making sure file paths are preserved, by using their full path
++# Preserve file paths by expanding them to absolute paths.
+ for arg in "$@"; do
+     case "$arg" in
+       -*) argv[$i]="$arg" ;;
+-      *)  argv[$i]="`echo $(cd $(dirname "$arg"); pwd)/$(basename "$arg")`" ;;
++      *)  argv[$i]="$(cd "$(dirname "$arg")" && pwd)/$(basename "$arg")" ;;
+     esac
+     i=$((i + 1))
+ done
+ 
+-open -a GPS -n -W --args "${argv[@]}"
++open -a "GNAT Studio" -n -W --args "${argv[@]}"
+--- /dev/null
++++ b/osx_bundle/scripts/bundle_python.py
+@@ -0,0 +1,81 @@
++#!/usr/bin/env python3
++"""Copy the active Homebrew Python runtime into a GNAT Studio bundle."""
++
++from __future__ import annotations
++
++import shutil
++import site
++import sys
++import sysconfig
++from pathlib import Path
++
++
++def copytree(src: Path, dst: Path) -> None:
++    if not src.exists():
++        raise RuntimeError(f"Python runtime path does not exist: {src}")
++    dst.parent.mkdir(parents=True, exist_ok=True)
++    shutil.copytree(src, dst, symlinks=False, dirs_exist_ok=True)
++
++
++def main() -> int:
++    if len(sys.argv) != 3:
++        raise SystemExit(f"usage: {sys.argv[0]} <bundle-lib-dir> <python-executable>")
++
++    bundle_lib = Path(sys.argv[1]).resolve()
++    python_exe = Path(sys.argv[2])
++
++    version = f"{sys.version_info.major}.{sys.version_info.minor}"
++    py_lib = bundle_lib / f"python{version}"
++    py_lib.mkdir(parents=True, exist_ok=True)
++
++    paths = sysconfig.get_paths(vars={"base": sys.prefix, "platbase": sys.exec_prefix})
++    stdlib = Path(paths["stdlib"])
++    platstdlib = Path(paths.get("platstdlib", paths["stdlib"]))
++
++    # Copy the standard library and the platform lib-dynload directory.
++    copytree(stdlib, py_lib)
++    if platstdlib != stdlib and platstdlib.exists():
++        copytree(platstdlib, py_lib)
++
++    # PyGObject / Pycairo are installed as normal Python site packages by
++    # Homebrew. Copy both pure-Python and platform-specific package trees.
++    purelib = Path(sysconfig.get_path("purelib"))
++    platlib = Path(sysconfig.get_path("platlib"))
++    site_dst = py_lib / "site-packages"
++    copytree(purelib, site_dst)
++    if platlib != purelib and platlib.exists():
++        copytree(platlib, site_dst)
++
++    # Avoid importing Homebrew's external-prefix customization in the bundle.
++    for pth in site_dst.glob("*.pth"):
++        pth.unlink()
++    sitecustomize = py_lib / "sitecustomize.py"
++    if sitecustomize.exists():
++        sitecustomize.unlink()
++
++    # GNAT Studio's source tree convention expects a Python home at
++    # share/gnatstudio/python. Point that location at lib/pythonX.Y.
++    gpy = bundle_lib.parent / "share" / "gnatstudio" / "python"
++    gpy_lib = gpy / "lib"
++    gpy_lib.mkdir(parents=True, exist_ok=True)
++    link = gpy_lib / f"python{version}"
++    if link.exists() or link.is_symlink():
++        if link.is_dir() and not link.is_symlink():
++            shutil.rmtree(link)
++        else:
++            link.unlink()
++    link.symlink_to(Path("../../../../lib") / f"python{version}")
++
++    # Keep the executable reference visible for diagnostics without creating
++    # a symlink into Homebrew's prefix.
++    print(f"Python executable: {python_exe.resolve()}")
++    print(f"Python version:    {sys.version.split()[0]}")
++    print(f"stdlib:            {stdlib}")
++    print(f"site-packages:     {purelib}")
++    print(f"bundle runtime:    {py_lib}")
++    print(f"python home link:  {gpy}")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+--- /dev/null
++++ b/osx_bundle/scripts/bundle_dylibs.sh
+@@ -0,0 +1,45 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++ROOT=${1:?bundle root is required (Contents/MacOS)}
++FRAMEWORKS=${2:?framework directory is required (Contents/Frameworks)}
++
++mkdir -p "$FRAMEWORKS"
++
++DYLIBBUNDLER="$(command -v dylibbundler)"
++[[ -x "$DYLIBBUNDLER" ]] || { echo "dylibbundler not found" >&2; exit 1; }
++
++bundle_one() {
++    local target="$1"
++    [[ -f "$target" ]] || return 0
++    if ! file -b "$target" | grep -q 'Mach-O'; then
++        return 0
++    fi
++
++    echo "Bundling dependencies of: $target"
++    "$DYLIBBUNDLER" \
++        -od \
++        -b \
++        -x "$target" \
++        -d "$FRAMEWORKS" \
++        -p '@executable_path/../../Frameworks'
++}
++
++# Main executable and GTK utility.
++bundle_one "$ROOT/bin/gnatstudio_exe"
++bundle_one "$ROOT/bin/gdk-pixbuf-query-loaders"
++
++# GTK plugins, GI modules, Python extensions and any copied dylibs.
++while IFS= read -r -d '' target; do
++    bundle_one "$target"
++done < <(
++    find "$ROOT" -type f \( \
++        -name '*.dylib' -o \
++        -name '*.so' -o \
++        -name '*.bundle' \
++    \) -print0
++)
++
++# Remove dependency artifacts dylibbundler may leave in the framework folder
++# when a source file was encountered more than once.
++find "$FRAMEWORKS" -type f -name '*.la' -delete

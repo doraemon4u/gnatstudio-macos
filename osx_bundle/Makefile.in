@@ -1,114 +1,94 @@
-PREFIX:=$(PWD)
-TOP:=$(PWD)
-GTK_PREFIX=@GTK_PREFIX@
-GPS_VERSION=@GPS_VERSION@
-GPS_VERSION_NUM=$(shell echo $(GPS_VERSION) | sed -e 's/\([0-9.]*\).*/\1/')
+SHELL:=/bin/bash
 
-APP:=GPS.app
-PKG:=GPS-$(GPS_VERSION).pkg
-DMG:=GPS-$(GPS_VERSION).dmg
+TOP:=$(CURDIR)
+PREFIX?=$(TOP)/_bundle
+GTK_PREFIX?=@GTK_PREFIX@
+GPS_VERSION?=@GPS_VERSION@
+PYTHON?=python3
 
-contents=$(TOP)/_build/Applications/$(APP)/Contents
+APP:=GNAT Studio.app
+DMG:=GNAT-Studio-$(GPS_VERSION)-macos27-arm64.dmg
+
+contents=$(PREFIX)/$(APP)/Contents
 root=$(contents)/MacOS
 bin=$(root)/bin
 etc=$(root)/etc
 lib=$(root)/lib
 share=$(root)/share
-inc=$(root)/include
+frameworks=$(contents)/Frameworks
+resources=$(contents)/Resources
 
-all: pkg
+auto-install-dirs: force
+	mkdir -p "$(contents)" "$(root)" "$(bin)" "$(lib)" "$(etc)" "$(frameworks)"
 
-pkg: $(PREFIX)/$(PKG)
+.PHONY: all app dmg clean force auto-install-dirs
+
+all: dmg
+
+app: $(PREFIX)/$(APP)
 
 dmg: $(PREFIX)/$(DMG)
 
 clean:
-	rm -rf *.dmg GPS.app
+	rm -rf "$(PREFIX)/$(APP)" "$(PREFIX)/$(DMG)" "$(PREFIX)/_dmgroot"
 
-.PHONY: force
+$(PREFIX)/$(APP): force
+	rm -rf "$(PREFIX)/$(APP)"
+	mkdir -p "$(resources)" "$(root)" "$(bin)" "$(lib)" "$(etc)" "$(frameworks)"
+	cp -R "$(TOP)/Resources/." "$(resources)/"
+	$(PYTHON) -c 'from pathlib import Path; p=Path("$(contents)/Info.plist"); p.write_text(Path("$(TOP)/srcs/Info.plist").read_text().replace("@GPS_VERSION@", "$(GPS_VERSION)"))'
+	install -m 755 "$(TOP)/srcs/gps_bundle_main" "$(root)/gps"
 
-$(PREFIX)/$(DMG): $(PREFIX)/$(PKG)
-# create dmg image
-	cd $(PREFIX) && \
-	  sh $(TOP)/scripts/dodmg.sh GPS $(GPS_VERSION) $(TOP)
-	rm -f $(PREFIX)/$(PKG)
+	# Install GNAT Studio itself.
+	$(MAKE) -C "$(TOP)/.." install-strip prefix="$(root)" PYTHON="$(PYTHON)"
+	find "$(contents)" -name .svn -type d -prune -exec rm -rf {} +
 
-$(PREFIX)/$(PKG): force
-	rm -rf _build
+	# GTK runtime data.
+	if [[ -d "$(GTK_PREFIX)/lib/girepository-1.0" ]]; then cp -R "$(GTK_PREFIX)/lib/girepository-1.0" "$(lib)/"; fi
+	if [[ -d "$(GTK_PREFIX)/lib/gio" ]]; then cp -R "$(GTK_PREFIX)/lib/gio" "$(lib)/"; fi
+	if [[ -d "$(GTK_PREFIX)/lib/gdk-pixbuf-2.0" ]]; then cp -R "$(GTK_PREFIX)/lib/gdk-pixbuf-2.0" "$(lib)/"; fi
+	if [[ -d "$(GTK_PREFIX)/lib/gtk-3.0" ]]; then cp -R "$(GTK_PREFIX)/lib/gtk-3.0" "$(lib)/"; fi
+	mkdir -p "$(lib)/gdk-pixbuf-2.0/2.10.0/loaders"
+	if [[ -d "$(GTK_PREFIX)/lib/gdk-pixbuf-2.0/2.10.0/loaders" ]]; then cp -R "$(GTK_PREFIX)/lib/gdk-pixbuf-2.0/2.10.0/loaders/." "$(lib)/gdk-pixbuf-2.0/2.10.0/loaders/"; fi
+	if [[ -x "$(GTK_PREFIX)/bin/gdk-pixbuf-query-loaders" ]]; then install -m 755 "$(GTK_PREFIX)/bin/gdk-pixbuf-query-loaders" "$(bin)/"; fi
+	if [[ -f "$(GTK_PREFIX)/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache" ]]; then rm -f "$(lib)/gdk-pixbuf-2.0"/*/loaders.cache; fi
+	mkdir -p "$(etc)/gtk-3.0"
+	cp "$(TOP)/srcs/settings.ini" "$(etc)/gtk-3.0/"
+	if [[ -d "$(GTK_PREFIX)/etc/pango" ]]; then cp -R "$(GTK_PREFIX)/etc/pango" "$(etc)/"; fi
 
-# prepare the OSX Application structure
-	mkdir -p $(contents)
-	mkdir -p $(root)
-	mkdir -p $(lib)
-	mkdir -p $(inc)
-	mkdir -p $(etc)
-	cp -r Resources $(contents)
-	cp srcs/Info.plist $(contents)
-	cp srcs/gps_bundle_main $(root)/gps
+	# GTK utilities and Python extensions are repaired after installation by
+	# dylibbundler. Keep the runtime in the same lib/ tree as the executable.
+	$(PYTHON) "$(TOP)/scripts/bundle_python.py" "$(root)/lib" "$(PYTHON)"
 
-# install gps
-	make -C .. install-strip prefix=$(root)
-	find $(contents) -d -name .svn -exec rm -rf {} \;
+	# GTK data used at runtime.
+	mkdir -p "$(share)/themes" "$(share)/locale" "$(share)/icons" "$(share)/glib-2.0"
+	if [[ -d "$(GTK_PREFIX)/share/themes" ]]; then cp -R "$(GTK_PREFIX)/share/themes/." "$(share)/themes/"; fi
+	if [[ -d "$(GTK_PREFIX)/share/locale" ]]; then cp -R "$(GTK_PREFIX)/share/locale/." "$(share)/locale/"; fi
+	if [[ -d "$(GTK_PREFIX)/share/icons" ]]; then cp -R "$(GTK_PREFIX)/share/icons/." "$(share)/icons/"; fi
+	if [[ -d "$(GTK_PREFIX)/share/glib-2.0/schemas" ]]; then cp -R "$(GTK_PREFIX)/share/glib-2.0/schemas" "$(share)/glib-2.0/"; fi
 
-# install gtk data files
-	cp -r $(GTK_PREFIX)/lib/girepository-1.0 $(lib)
-	cp -r $(GTK_PREFIX)/lib/gio $(lib)
-	cp -r $(GTK_PREFIX)/lib/gdk-pixbuf-2.0 $(lib)
-	cp -r $(GTK_PREFIX)/lib/gtk-3.0 $(lib)
-	rm $(lib)/gdk-pixbuf-2.0/*/loaders.cache
-	mkdir -p $(etc)/gtk-3.0
-	cp srcs/settings.ini $(etc)/gtk-3.0/
-	-cp -r $(GTK_PREFIX)/etc/pango $(etc)
+	# Pull all external Mach-O dependencies into Contents/Frameworks and rewrite
+	# their load commands to use a bundle-relative install name.
+	bash "$(TOP)/scripts/bundle_dylibs.sh" \
+		"$(root)" \
+		"$(frameworks)"
 
-# install gtk binaries and libraries
-	python ./scripts/install.py $(root) \
-	  $(GTK_PREFIX)/bin/gdk-pixbuf-query-loaders \
-	  $(bin)/gps_exe \
-	  $(lib)/gdk-pixbuf-2.0/2.10.0/loaders/*.so \
-	  $(GTK_PREFIX)/lib/libgirepository*.dylib \
-	  $(GTK_PREFIX)/lib/libpyglib*.dylib
+	# Strip linker/build-system leftovers which are never needed at runtime.
+	find "$(contents)" -type f \( -name '*.la' -o -name '*.pyc' \) -delete
+	find "$(contents)" -type d -name '__pycache__' -prune -exec rm -rf {} +
 
-# install python run-time
-	cp -r $(GTK_PREFIX)/lib/python2.7 $(lib)
-	cp -r $(GTK_PREFIX)/include/python2.7 $(inc)
+	# Ad-hoc signing makes the unsigned local build loadable on a normal macOS
+	# installation. Replace with Developer ID signing in a release workflow.
+	/usr/bin/codesign --force --deep --sign - "$(PREFIX)/$(APP)"
 
-# cleanup and strip libraries and python run-time
-	find $(lib) -name \*.dylib -exec strip -S - {} \;
-	find $(lib) -name \*.py[co] -exec rm {} \;
-	find $(lib) -name \*.la -exec rm {} \;
-
-# share dir
-	mkdir -p $(share)/themes
-	cp -r $(GTK_PREFIX)/share/themes/* $(share)/themes/
-	mkdir -p $(share)/locale
-	-cp -r $(GTK_PREFIX)/share/locale/* $(share)/locale/
-	mkdir -p $(share)/icons
-	-cp -r $(GTK_PREFIX)/share/icons/* $(share)/icons/
-	mkdir -p $(share)/glib-2.0
-	-cp -r $(GTK_PREFIX)/share/glib-2.0/schemas $(share)/glib-2.0
-
-# Now that the app has been created, let's package it
-# The gps.app package
-	pkgbuild --root _build/Applications \
-	         --version $(GPS_VERSION_NUM) \
-	         --identifier com.adacore.gps \
-	         _build/gps.pkg
-
-# The command line handling package
-	mkdir -p _build/bin
-	cp srcs/gps_command_line _build/bin/gps
-	chmod a+x _build/bin/gps
-	pkgbuild --root _build/bin \
-	         --version $(GPS_VERSION_NUM) \
-	         --identifier com.adacore.gpscmdlin \
-	         _build/gpscmdlin.pkg
-
-# The end product, allowing custom install
-	mkdir -p _build/resources
-	cp srcs/background.png _build/resources/background.png
-	productbuild --distribution srcs/gps.dist \
-	             --resources _build/resources \
-	             --package-path _build \
-	             $(PREFIX)/$(PKG)
-	rm -rf _build
-
+$(PREFIX)/$(DMG): $(PREFIX)/$(APP)
+	rm -rf "$(PREFIX)/_dmgroot"
+	mkdir -p "$(PREFIX)/_dmgroot"
+	cp -R "$(PREFIX)/$(APP)" "$(PREFIX)/_dmgroot/"
+	hdiutil create \
+		-volname "GNAT Studio" \
+		-srcfolder "$(PREFIX)/_dmgroot" \
+		-ov \
+		-format UDBZ \
+		"$(PREFIX)/$(DMG)"
+	rm -rf "$(PREFIX)/_dmgroot"
