@@ -284,6 +284,9 @@ jobs:
           LIBRARY_PATH="${GNATCOLL_PYTHON_PREFIX}/lib:${LIBRARY_PATH:-}"
           DYLD_LIBRARY_PATH="${GNATCOLL_PYTHON_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
 
+          sed -i.bak "s|^export GPR_PROJECT_PATH=.*|export GPR_PROJECT_PATH=\\\"${GPR_PROJECT_PATH}\\\"|" \
+            "$GITHUB_WORKSPACE/.ci/alire-env.sh"
+
           echo "GPR_PROJECT_PATH=${GPR_PROJECT_PATH}" >> "$GITHUB_ENV"
           echo "ADA_PROJECT_PATH=${ADA_PROJECT_PATH}" >> "$GITHUB_ENV"
           echo "LIBRARY_PATH=${LIBRARY_PATH}" >> "$GITHUB_ENV"
