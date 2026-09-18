@@ -122,7 +122,13 @@ jobs:
           mkdir -p .ci/alire_bin
           cd .ci/alire_bin
 
-          curl -fL             -o alire.zip             "https://github.com/alire-project/alire/releases/download/v${ALIRE_VERSION}/alr-${ALIRE_VERSION}-bin-aarch64-macos.zip"
+          for i in 1 2 3 4 5; do
+            curl -fL -o alire.zip \
+              "https://github.com/alire-project/alire/releases/download/v${ALIRE_VERSION}/alr-${ALIRE_VERSION}-bin-aarch64-macos.zip" && break
+            echo "Attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          test -f alire.zip
 
           unzip -q -o alire.zip "bin/alr*"
           rm alire.zip
