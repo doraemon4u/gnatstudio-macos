@@ -346,6 +346,8 @@ jobs:
           ln -sfn "${PYTHON_PREFIX}/bin/python${PYTHON_VERSION}" "${PYTHON_PREFIX}/bin/python"
           "${PYTHON_PREFIX}/bin/pip3" install setuptools 2>/dev/null || \
           "${PYTHON_PREFIX}/bin/python" -m pip install setuptools 2>/dev/null || true
+          SITE_PKG=$("${PYTHON_PREFIX}/bin/python" -c "import site; print(site.getsitepackages()[0])")
+          echo "import setuptools" > "${SITE_PKG}/distutils_shim.pth"
 
           ./configure             --prefix="$GITHUB_WORKSPACE/_install"
 
