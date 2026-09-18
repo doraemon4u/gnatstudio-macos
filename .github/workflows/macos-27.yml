@@ -422,6 +422,16 @@ jobs:
           echo "=== Verify -gnatX injection ==="
           grep -n "gnatX" "${SHARED_GPR}" || echo "(gnatX NOT found!)"
 
+          # Patch canvas_view.ads: explicit conversion for anonymous access parameters
+          # GNAT 16.1.0 doesn't support implicit conversion of anonymous access params
+          # even with -gnatX -gnat2022 (Ada 2022 feature, requires GNAT >= 26)
+          if [ -f "${GTKADA_SRC}/gtkada-canvas_view.ads" ]; then
+            sed -i '' \
+              -e 's/return Abstract_Item is (Self);/return Abstract_Item (Self);/g' \
+              "${GTKADA_SRC}/gtkada-canvas_view.ads"
+            echo "Patched canvas_view.ads for anonymous access conversion"
+          fi
+
           cd "${GTKADA_SRC}"
 
           gprbuild -j"$(sysctl -n hw.ncpu)" -p -P"${GTKADA_GPR}" \
