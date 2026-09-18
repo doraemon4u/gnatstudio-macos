@@ -12,7 +12,7 @@ permissions:
 jobs:
   build:
     name: Build GNAT Studio on macOS ARM64
-    runs-on: macos-27
+    runs-on: macos-latest
 
     env:
       HOMEBREW_NO_AUTO_UPDATE: '1'
