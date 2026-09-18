@@ -190,14 +190,14 @@ jobs:
           file "$(command -v brew)"
           brew config | grep -E 'HOMEBREW_PREFIX|CPU|macOS|Rosetta' || true
 
+          # Pre-select the toolchain so 'alr with' does not prompt interactively.
+          alr toolchain --select gnat_native=16.1.0 gprbuild=26.0.1
+
           rm -rf .ci/gnatstudio-deps
           mkdir -p .ci/gnatstudio-deps
           cd .ci/gnatstudio-deps
 
           alr -n init --bin gnatstudiodeps
-
-          # Pre-select the toolchain so 'alr with' does not prompt interactively.
-          alr toolchain --select gnat_native=16.1.0 gprbuild=26.0.1
 
           # Alire invokes bare `brew`; the wrapper above is therefore the
           # actual fix for the ARM/Rosetta issue.
