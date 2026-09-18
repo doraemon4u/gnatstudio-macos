@@ -213,6 +213,8 @@ jobs:
           alr with vss_extra=26.2.0
           alr with vss_text=26.2.0
 
+          alr update
+
           alr printenv --unix > "$GITHUB_WORKSPACE/.ci/alire-env.sh"
 
           echo '--- Alire environment ---'
