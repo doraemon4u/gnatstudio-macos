@@ -311,13 +311,8 @@ jobs:
             done
           done
 
-          cat > "${GITHUB_WORKSPACE}/.ci/gprls" <<WRAPPER
-          #!/bin/bash
-          exec "${ALIRE_PREFIX}/bin/gprls" -aP. "\$@"
-          WRAPPER
-          chmod +x "${GITHUB_WORKSPACE}/.ci/gprls"
-
-          export PATH="${GITHUB_WORKSPACE}/.ci:${PATH}"
+          sed -i '' 's|gprls -Pconftest\.gpr|gprls -aP. -Pconftest.gpr|g' configure
+          sed -i '' 's|gnat ls -Pconftest\.gpr|gnat ls -aP. -Pconftest.gpr|g' configure
 
           ./configure             --prefix="$GITHUB_WORKSPACE/_install"             --disable-shared
 
