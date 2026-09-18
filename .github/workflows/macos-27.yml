@@ -1,0 +1,238 @@
+name: GNAT Studio - macOS 27 ARM64
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos-27:
+    name: Build GNAT Studio on macOS 27 ARM64
+    # xcode-27 is the public-preview macOS 27 ARM64 image.
+    # Use xcode-27-xlarge instead when the repository has access to larger runners.
+    runs-on: xcode-27
+
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '27.0'
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_ENV_HINTS: '1'
+      PYTHON_VERSION: '3.14'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Inspect runner
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sw_vers
+          uname -a
+          test "$(uname -m)" = arm64
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
+          xcrun --sdk macosx --show-sdk-path
+
+      - name: Install native dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          brew install \
+            make \
+            pkgconf \
+            gtk+3 \
+            gobject-introspection \
+            pygobject3 \
+            py3cairo \
+            python@3.14 \
+            dylibbundler
+
+      - name: Configure Homebrew / Python environment
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          BREW_PREFIX="$(brew --prefix)"
+          GTK_PREFIX="$(brew --prefix gtk+3)"
+          PYTHON_PREFIX="$(brew --prefix python@${PYTHON_VERSION})"
+
+          echo "BREW_PREFIX=${BREW_PREFIX}" >> "$GITHUB_ENV"
+          echo "GTK_PREFIX=${GTK_PREFIX}" >> "$GITHUB_ENV"
+          echo "PYTHON_PREFIX=${PYTHON_PREFIX}" >> "$GITHUB_ENV"
+
+          # GNU make must precede Apple's BSD make.
+          echo "${BREW_PREFIX}/opt/make/libexec/gnubin" >> "$GITHUB_PATH"
+          echo "${PYTHON_PREFIX}/bin" >> "$GITHUB_PATH"
+
+          OLD_PKG_CONFIG_PATH="${PKG_CONFIG_PATH:-}"
+          PKG_CONFIG_PATH="${GTK_PREFIX}/lib/pkgconfig:${GTK_PREFIX}/share/pkgconfig:${PYTHON_PREFIX}/lib/pkgconfig:${BREW_PREFIX}/lib/pkgconfig:${BREW_PREFIX}/share/pkgconfig"
+          if [[ -n "$OLD_PKG_CONFIG_PATH" ]]; then
+            PKG_CONFIG_PATH="${PKG_CONFIG_PATH}:${OLD_PKG_CONFIG_PATH}"
+          fi
+          echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+
+          echo "PYTHON=python${PYTHON_VERSION}" >> "$GITHUB_ENV"
+
+          "${PYTHON_PREFIX}/bin/python${PYTHON_VERSION}" --version
+          "${GTK_PREFIX}/bin/gtk3-demo" --version 2>/dev/null || true
+          pkg-config --modversion gtk+-3.0
+          pkg-config --modversion pycairo 2>/dev/null || true
+
+      - name: Install GNAT / GPRBuild through Alire
+        uses: alire-project/alr-install@v2
+        with:
+          crates: gnat_native gprbuild
+          prefix: alire_prefix
+
+      - name: Check Ada toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          which gnat
+          which gprbuild
+          gnat --version
+          gprbuild --version
+          file "$(which gnat)"
+
+      - name: Resolve GNAT Studio Ada dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p .ci/gnatstudio-deps
+          cd .ci/gnatstudio-deps
+
+          alr init --bin gnatstudio-deps
+          alr with gtkada^26.0.0
+          alr with xmlada^26.0.0
+          alr with gnatcoll^26.0.0
+          alr with gnatcoll_python^26.0.0
+          alr with vss_extra^26.2.0
+          alr with vss_text^26.2.0
+          alr build
+
+          alr printenv --unix > "$GITHUB_WORKSPACE/.ci/alire-env.sh"
+          cat "$GITHUB_WORKSPACE/.ci/alire-env.sh"
+
+      - name: Configure GNAT Studio
+        shell: bash
+        run: |
+          set -euxo pipefail
+          source .ci/alire-env.sh
+
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${PYTHON_PREFIX}/bin:${PATH}"
+          export CC=clang
+          export CXX=clang++
+          export MACOSX_DEPLOYMENT_TARGET=27.0
+          export CFLAGS="-O2 -mmacosx-version-min=27.0"
+          export CXXFLAGS="-O2 -mmacosx-version-min=27.0"
+          export LDFLAGS="-mmacosx-version-min=27.0"
+
+          ./configure \
+            --prefix="$GITHUB_WORKSPACE/_install" \
+            --disable-shared
+
+      - name: Build GNAT Studio
+        shell: bash
+        run: |
+          set -euxo pipefail
+          source .ci/alire-env.sh
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${PYTHON_PREFIX}/bin:${PATH}"
+          export MACOSX_DEPLOYMENT_TARGET=27.0
+
+          make BUILD=Production -j"$(sysctl -n hw.ncpu)"
+
+      - name: Install GNAT Studio
+        shell: bash
+        run: |
+          set -euxo pipefail
+          source .ci/alire-env.sh
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${PYTHON_PREFIX}/bin:${PATH}"
+          export MACOSX_DEPLOYMENT_TARGET=27.0
+
+          make install-strip prefix="$GITHUB_WORKSPACE/_install"
+
+          test -x _install/bin/gnatstudio_exe
+          test -x _install/bin/gnatstudio
+          file _install/bin/gnatstudio_exe
+          otool -hv _install/bin/gnatstudio_exe
+
+      - name: Build self-contained GNAT Studio.app
+        shell: bash
+        run: |
+          set -euxo pipefail
+          source .ci/alire-env.sh
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${PYTHON_PREFIX}/bin:${PATH}"
+          export MACOSX_DEPLOYMENT_TARGET=27.0
+
+          cd osx_bundle
+          make clean || true
+          make dmg \
+            PREFIX="$GITHUB_WORKSPACE/_bundle" \
+            GTK_PREFIX="$GTK_PREFIX" \
+            PYTHON="$PYTHON"
+
+      - name: Validate bundle
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APP="_bundle/GNAT Studio.app"
+          DMG="$(find _bundle -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+
+          test -d "$APP"
+          test -n "$DMG"
+          test -f "$APP/Contents/Info.plist"
+          test -x "$APP/Contents/MacOS/gps"
+          test -x "$APP/Contents/MacOS/bin/gnatstudio_exe"
+          test -d "$APP/Contents/Frameworks"
+          test -d "$APP/Contents/MacOS/lib"
+
+          /usr/bin/plutil -lint "$APP/Contents/Info.plist"
+          /usr/bin/plutil -p "$APP/Contents/Info.plist"
+
+          file "$APP/Contents/MacOS/bin/gnatstudio_exe"
+          test "$(file -b "$APP/Contents/MacOS/bin/gnatstudio_exe" | grep -c 'Mach-O' || true)" -eq 1
+          otool -arch arm64 -hv "$APP/Contents/MacOS/bin/gnatstudio_exe"
+
+          echo "Checking for external Homebrew dylib references..."
+          bad=0
+          while IFS= read -r -d '' macho; do
+            if otool -L "$macho" | grep -E '/opt/homebrew/|/usr/local/opt/|/Cellar/' >/dev/null 2>&1; then
+              echo "EXTERNAL LINK: $macho"
+              otool -L "$macho"
+              bad=1
+            fi
+          done < <(
+            find "$APP/Contents" -type f \( \
+              -name '*.dylib' -o -name '*.so' -o -name '*.bundle' -o \
+              -name 'gnatstudio_exe' -o -name 'gdk-pixbuf-query-loaders' \
+            \) -print0
+          )
+          test "$bad" -eq 0
+
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          hdiutil imageinfo "$DMG" >/dev/null
+
+      - name: Create distributable app archive
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ditto -c -k --sequesterRsrc --keepParent \
+            "_bundle/GNAT Studio.app" \
+            "_bundle/GNAT-Studio-macos27-arm64.zip"
+
+      - name: Upload macOS 27 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gnatstudio-macos27-arm64
+          if-no-files-found: error
+          path: |
+            _bundle/*.dmg
+            _bundle/*.zip
