@@ -306,7 +306,7 @@ jobs:
           export GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
           export ADA_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${ADA_PROJECT_PATH:-}"
           export LIBRARY_TYPE=static
-          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
+          export PATH="${PYTHON_PREFIX}/bin:${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
 
           # Create missing shared .gpr stubs in Alire cache
           # Sub-projects (xmlada_sax.gpr, gtkada.gpr) import "../xmlada_shared" / "../gtkada_shared"
@@ -346,7 +346,6 @@ jobs:
           # Python 3.12+ removed distutils; install setuptools into the Homebrew Python
           "${PYTHON_PREFIX}/bin/pip3" install setuptools 2>/dev/null || \
           python3 -m pip install setuptools 2>/dev/null || true
-          export PYTHON="${PYTHON_PREFIX}/bin/python${PYTHON_VERSION}"
 
           ./configure             --prefix="$GITHUB_WORKSPACE/_install"
 
