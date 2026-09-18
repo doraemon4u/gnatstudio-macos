@@ -14,7 +14,6 @@ permissions:
 jobs:
   build-macos-27:
     name: Build GNAT Studio on macOS 27 ARM64
-    # macOS 27 ARM64 public-preview image.
     runs-on: xcode-27
 
     env:
@@ -22,6 +21,7 @@ jobs:
       HOMEBREW_NO_AUTO_UPDATE: '1'
       HOMEBREW_NO_ENV_HINTS: '1'
       PYTHON_VERSION: '3.14'
+      ALIRE_VERSION: '2.1.1'
       ALIRE_PREFIX: '${{ github.workspace }}/.ci/alire_prefix'
       GNATCOLL_PYTHON_PREFIX: '${{ github.workspace }}/.ci/gnatcoll-python3'
 
@@ -31,130 +31,139 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Inspect runner
+      - name: Inspect runner architecture
         shell: bash
         run: |
           set -euxo pipefail
           sw_vers
           uname -a
-          uname -m
           test "$(uname -m)" = arm64
+          test "$(arch)" = arm64
           xcodebuild -version
           xcrun --sdk macosx --show-sdk-version
-          xcrun --sdk macosx --show-sdk-path
+
+      - name: Configure native ARM Homebrew
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          # GitHub's ARM64 runner uses the ARM Homebrew prefix.
+          BREW_PREFIX="$(arch -arm64 brew --prefix)"
+
+          echo "BREW_PREFIX=${BREW_PREFIX}" >> "$GITHUB_ENV"
+          echo "${BREW_PREFIX}/bin" >> "$GITHUB_PATH"
+          echo "${BREW_PREFIX}/sbin" >> "$GITHUB_PATH"
+
+          arch -arm64 brew --version
+          arch -arm64 brew config | sed -n '1,80p'
+
+          test -x "${BREW_PREFIX}/bin/brew"
 
       - name: Install native dependencies
         shell: bash
         run: |
           set -euxo pipefail
-          brew install             make             pkgconf             gtk+3             gobject-introspection             pygobject3             py3cairo             python@3.14             dylibbundler
 
-      - name: Configure Homebrew / Python environment
-        shell: bash
-        run: |
-          set -euxo pipefail
+          arch -arm64 brew install             make             pkgconf             gtk+3             gobject-introspection             pygobject3             py3cairo             python@3.14             dylibbundler
 
-          BREW_PREFIX="$(brew --prefix)"
-          GTK_PREFIX="$(brew --prefix gtk+3)"
-          PYTHON_PREFIX="$(brew --prefix "python@${PYTHON_VERSION}")"
+          BREW_PREFIX="${BREW_PREFIX:-$(arch -arm64 brew --prefix)}"
+          GTK_PREFIX="$(arch -arm64 brew --prefix gtk+3)"
+          PYTHON_PREFIX="$(arch -arm64 brew --prefix "python@${PYTHON_VERSION}")"
 
-          echo "BREW_PREFIX=${BREW_PREFIX}" >> "$GITHUB_ENV"
           echo "GTK_PREFIX=${GTK_PREFIX}" >> "$GITHUB_ENV"
           echo "PYTHON_PREFIX=${PYTHON_PREFIX}" >> "$GITHUB_ENV"
 
-          # Do not rely on macOS BSD make.
+          # GNU make must appear as `make`, not only as `gmake`.
           echo "${BREW_PREFIX}/opt/make/libexec/gnubin" >> "$GITHUB_PATH"
           echo "${PYTHON_PREFIX}/bin" >> "$GITHUB_PATH"
 
-          PKG_CONFIG_PATH="${GTK_PREFIX}/lib/pkgconfig:${GTK_PREFIX}/share/pkgconfig:${PYTHON_PREFIX}/lib/pkgconfig:${BREW_PREFIX}/lib/pkgconfig:${BREW_PREFIX}/share/pkgconfig"
-          echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+          # Make absolutely sure every probe sees the ARM tools.
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${PYTHON_PREFIX}/bin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PATH}"
 
-          PYTHON="${PYTHON_PREFIX}/bin/python${PYTHON_VERSION}"
-          echo "PYTHON=${PYTHON}" >> "$GITHUB_ENV"
-
-          "$PYTHON" --version
+          command -v make
+          make --version | head -1
+          command -v pkg-config
+          pkg-config --version
           pkg-config --modversion gtk+-3.0
-          pkg-config --exists python3-embed || true
 
-          "$PYTHON" - <<'PY'
-          import sys
-          import sysconfig
-          print("Python:", sys.executable)
-          print("include:", sysconfig.get_path("include"))
-          print("platinclude:", sysconfig.get_path("platinclude"))
-          print("libdir:", sysconfig.get_config_var("LIBDIR"))
-          print("LDLIBRARY:", sysconfig.get_config_var("LDLIBRARY"))
-          print("LIBPL:", sysconfig.get_config_var("LIBPL"))
-          print("LIBRARY:", sysconfig.get_config_var("LIBRARY"))
-          print("PY_ENABLE_SHARED:", sysconfig.get_config_var("PY_ENABLE_SHARED"))
-          print("PYTHONFRAMEWORK:", sysconfig.get_config_var("PYTHONFRAMEWORK"))
-          PY
+          arch -arm64 brew list --versions make gtk+3 python@3.14
 
-      - name: Install GNAT / GPRBuild through Alire
-        uses: alire-project/alr-install@v2
-        with:
-          crates: gnat_native=16.1.0 gprbuild=26.0.1
-          prefix: '${{ github.workspace }}/.ci/alire_prefix'
-          # alr-install@v2 uses `readlink -f` for PATH injection on non-Windows.
-          # Avoid that macOS-specific path handling here and add the absolute
-          # prefix ourselves in the next step.
-          add_to_path: false
-          # Do not reuse an old prefix while bringing up this new macOS 27 build.
-          cache: false
-          clean: false
-
-      - name: Configure Ada toolchain PATH
+      - name: Install native ARM64 Alire
         shell: bash
         run: |
           set -euxo pipefail
 
-          test -d "$ALIRE_PREFIX"
-          test -d "$ALIRE_PREFIX/bin"
+          mkdir -p .ci/alire_bin
+          cd .ci/alire_bin
 
-          echo "$ALIRE_PREFIX/bin" >> "$GITHUB_PATH"
+          curl -fL             -o alire.zip             "https://github.com/alire-project/alire/releases/download/v${ALIRE_VERSION}/alr-${ALIRE_VERSION}-bin-aarch64-macos.zip"
 
-          export PATH="$ALIRE_PREFIX/bin:$PATH"
+          unzip -q -o alire.zip "bin/alr*" 
+          rm alire.zip
 
-          echo "ALIRE_PREFIX=$ALIRE_PREFIX"
-          echo "PATH=$PATH"
+          chmod +x bin/alr*
+          echo "$GITHUB_WORKSPACE/.ci/alire_bin/bin" >> "$GITHUB_PATH"
 
-          find "$ALIRE_PREFIX/bin" -maxdepth 1 -type f -o -type l | sort
+          file "$GITHUB_WORKSPACE/.ci/alire_bin/bin/alr"
+          "$GITHUB_WORKSPACE/.ci/alire_bin/bin/alr" --version
+
+          # Hard fail if Alire accidentally runs as x86_64/Rosetta.
+          file "$GITHUB_WORKSPACE/.ci/alire_bin/bin/alr" | grep -q 'arm64'
+          test "$(arch -arm64 "$GITHUB_WORKSPACE/.ci/alire_bin/bin/alr" --version >/dev/null; echo $?)" = 0
+
+          "$GITHUB_WORKSPACE/.ci/alire_bin/bin/alr" version | sed -n '1,120p'
+
+      - name: Install GNAT / GPRBuild through native Alire
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          ALR="$GITHUB_WORKSPACE/.ci/alire_bin/bin/alr"
+          export PATH="$GITHUB_WORKSPACE/.ci/alire_bin/bin:${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${PATH}"
+
+          rm -rf "$ALIRE_PREFIX"
+
+          "$ALR" -n install             gnat_native=16.1.0             gprbuild=26.0.1             --prefix="$ALIRE_PREFIX"
 
           test -x "$ALIRE_PREFIX/bin/gnat"
           test -x "$ALIRE_PREFIX/bin/gprbuild"
+
+          echo "$ALIRE_PREFIX/bin" >> "$GITHUB_PATH"
 
       - name: Check Ada toolchain
         shell: bash
         run: |
           set -euxo pipefail
 
-          export PATH="$ALIRE_PREFIX/bin:$PATH"
+          export PATH="$ALIRE_PREFIX/bin:$GITHUB_WORKSPACE/.ci/alire_bin/bin:${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${PATH}"
 
-          echo '--- Tool locations ---'
-          command -v alr || true
+          command -v alr
           command -v gnat
           command -v gprbuild
 
-          echo '--- Versions ---'
-          alr --version || true
-          "$ALIRE_PREFIX/bin/gnat" --version
-          "$ALIRE_PREFIX/bin/gprbuild" --version
+          echo '--- Alire ---'
+          alr --version
 
-          echo '--- Architecture ---'
-          file "$ALIRE_PREFIX/bin/gnat"
-          file "$ALIRE_PREFIX/bin/gprbuild"
-          file "$ALIRE_PREFIX/bin/gnatstudio" 2>/dev/null || true
+          echo '--- GNAT ---'
+          gnat --version
 
-          echo '--- GNAT target ---'
-          "$ALIRE_PREFIX/bin/gnat" -v 2>&1 | sed -n '1,20p' || true
+          echo '--- GPRBuild ---'
+          gprbuild --version
 
-          echo '--- GPRBuild target ---'
-          "$ALIRE_PREFIX/bin/gprbuild" --version
+          echo '--- Architectures ---'
+          file "$(command -v alr)"
+          file "$(command -v gnat)"
+          file "$(command -v gprbuild)"
+
+          echo '--- Target ---'
+          gnat -v 2>&1 | sed -n '1,24p'
 
       - name: Resolve GNAT Studio Ada dependencies
         shell: bash
         run: |
           set -euxo pipefail
+
+          export PATH="$ALIRE_PREFIX/bin:$GITHUB_WORKSPACE/.ci/alire_bin/bin:${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${PATH}"
 
           rm -rf .ci/gnatstudio-deps
           mkdir -p .ci/gnatstudio-deps
@@ -162,94 +171,65 @@ jobs:
 
           alr init --bin gnatstudio-deps
 
-          # Fetch/deploy the Ada dependencies, but do NOT build them here.
-          # GNAT Studio's own GPR build will compile dependent Ada projects as needed.
-          #
-          # Keep VSS releases coherent: vss_extra 26.2.0 requires vss_text ^26.2.0.
-          alr with gtkada=26.0.0
-          alr with xmlada=26.0.0
-          alr with gnatcoll=26.0.0
-          alr with gnatcoll_projects=26.0.0
-          alr with vss_extra=26.2.0
-          alr with vss_text=26.2.0
+          # Ensure Alire itself and the subprocesses it launches use native ARM Homebrew.
+          export HOMEBREW_PREFIX="${BREW_PREFIX}"
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PATH}"
 
-          # Print the workspace environment without triggering another build.
+          make --version | head -1
+          pkg-config --modversion gtk+-3.0
+          arch -arm64 brew info --json=v1 make gtk+3 | head -c 2000 || true
+
+          alr -d with gtkada=26.0.0
+          alr -d with xmlada=26.0.0
+          alr -d with gnatcoll=26.0.0
+          alr -d with gnatcoll_projects=26.0.0
+          alr -d with vss_extra=26.2.0
+          alr -d with vss_text=26.2.0
+
           alr printenv --unix > "$GITHUB_WORKSPACE/.ci/alire-env.sh"
 
           echo '--- Alire dependency solution ---'
-          alr show gtkada
-          alr show xmlada
-          alr show gnatcoll
-          alr show gnatcoll_projects
-          alr show vss_extra
-          alr show vss_text
+          alr with
 
           echo '--- Alire environment ---'
           cat "$GITHUB_WORKSPACE/.ci/alire-env.sh"
 
-      - name: Inspect resolved Ada projects
+      - name: Build GNATcoll Python 3 binding
         shell: bash
         run: |
           set -euxo pipefail
 
           source .ci/alire-env.sh
-
-          echo '--- Workspace ---'
-          pwd
-          ls -la .ci/gnatstudio-deps
-
-          echo '--- GPR_PROJECT_PATH ---'
-          printf '%s\n' "${GPR_PROJECT_PATH:-}"
-
-          echo '--- Located project files ---'
-          IFS=':' read -ra paths <<< "${GPR_PROJECT_PATH:-}"
-          for d in "${paths[@]}"; do
-            [ -d "$d" ] || continue
-            find "$d" -maxdepth 2 -type f \(               -name 'gtkada.gpr'               -o -name 'xmlada.gpr'               -o -name 'gnatcoll.gpr'               -o -name 'gnatcoll_projects.gpr'               -o -name 'vss_text.gpr'               -o -name 'vss_extra.gpr'             \) -print
-          done
-
-      - name: Build GNATcoll Python 3 binding for macOS
-        shell: bash
-        run: |
-          set -euxo pipefail
-
-          source .ci/alire-env.sh
-          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
           export PYTHON="${PYTHON_PREFIX}/bin/python${PYTHON_VERSION}"
           export MACOSX_DEPLOYMENT_TARGET=27.0
 
           rm -rf .ci/gnatcoll-bindings
           git clone --depth 1 https://github.com/AdaCore/gnatcoll-bindings.git .ci/gnatcoll-bindings
 
-          test -f .ci/gnatcoll-bindings/version_information
-
-          echo '--- GNATcoll bindings version ---'
-          cat .ci/gnatcoll-bindings/version_information
-
           cd .ci/gnatcoll-bindings/python3
-
           "${PYTHON}" setup.py build --python-exec "${PYTHON}"
-          "${PYTHON}" setup.py install             --prefix="${GNATCOLL_PYTHON_PREFIX}"
+          "${PYTHON}" setup.py install --prefix="${GNATCOLL_PYTHON_PREFIX}"
 
-          echo '--- Installed GNATcoll Python 3 ---'
           find "${GNATCOLL_PYTHON_PREFIX}" -maxdepth 5 -type f | sort | sed -n '1,200p'
 
       - name: Compose GPR / linker environment
         shell: bash
         run: |
           set -euxo pipefail
-
           source .ci/alire-env.sh
 
           GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
+          ADA_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${ADA_PROJECT_PATH:-}"
           LIBRARY_PATH="${GNATCOLL_PYTHON_PREFIX}/lib:${LIBRARY_PATH:-}"
           DYLD_LIBRARY_PATH="${GNATCOLL_PYTHON_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
 
           echo "GPR_PROJECT_PATH=${GPR_PROJECT_PATH}" >> "$GITHUB_ENV"
+          echo "ADA_PROJECT_PATH=${ADA_PROJECT_PATH}" >> "$GITHUB_ENV"
           echo "LIBRARY_PATH=${LIBRARY_PATH}" >> "$GITHUB_ENV"
           echo "DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}" >> "$GITHUB_ENV"
 
-          echo '--- GPR projects ---'
+          test -d "${GNATCOLL_PYTHON_PREFIX}/share/gpr"
           find "${GNATCOLL_PYTHON_PREFIX}/share/gpr" -maxdepth 1 -type f -print | sort
 
       - name: Configure GNAT Studio
@@ -258,14 +238,21 @@ jobs:
           set -euxo pipefail
 
           source .ci/alire-env.sh
-          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
-
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
           export CC=clang
           export CXX=clang++
           export MACOSX_DEPLOYMENT_TARGET=27.0
           export CFLAGS="-O2 -mmacosx-version-min=27.0"
           export CXXFLAGS="-O2 -mmacosx-version-min=27.0"
           export LDFLAGS="-mmacosx-version-min=27.0"
+
+          echo '--- Configure inputs ---'
+          command -v gnat
+          command -v gprbuild
+          command -v make
+          command -v pkg-config
+          pkg-config --modversion gtk+-3.0
+          printf '%s\n' "${GPR_PROJECT_PATH}"
 
           ./configure             --prefix="$GITHUB_WORKSPACE/_install"             --disable-shared
 
@@ -275,7 +262,7 @@ jobs:
           set -euxo pipefail
 
           source .ci/alire-env.sh
-          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
           export MACOSX_DEPLOYMENT_TARGET=27.0
 
           make BUILD=Production -j"$(sysctl -n hw.ncpu)"
@@ -286,7 +273,7 @@ jobs:
           set -euxo pipefail
 
           source .ci/alire-env.sh
-          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
           export MACOSX_DEPLOYMENT_TARGET=27.0
 
           make install-strip prefix="$GITHUB_WORKSPACE/_install"
@@ -297,64 +284,9 @@ jobs:
           file _install/bin/gnatstudio_exe
           otool -hv _install/bin/gnatstudio_exe
 
-      - name: Build self-contained GNAT Studio.app
-        shell: bash
-        run: |
-          set -euxo pipefail
-
-          source .ci/alire-env.sh
-          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
-          export MACOSX_DEPLOYMENT_TARGET=27.0
-
-          cd osx_bundle
-          make clean || true
-
-          make dmg             PREFIX="$GITHUB_WORKSPACE/_bundle"             GTK_PREFIX="$GTK_PREFIX"             PYTHON="$PYTHON"
-
-      - name: Validate bundle
-        shell: bash
-        run: |
-          set -euxo pipefail
-
-          APP="_bundle/GNAT Studio.app"
-          DMG="$(find _bundle -maxdepth 1 -type f -name '*.dmg' -print -quit)"
-
-          test -d "$APP"
-          test -n "$DMG"
-          test -f "$APP/Contents/Info.plist"
-          test -x "$APP/Contents/MacOS/gps"
-          test -x "$APP/Contents/MacOS/bin/gnatstudio_exe"
-          test -d "$APP/Contents/Frameworks"
-          test -d "$APP/Contents/MacOS/lib"
-
-          /usr/bin/plutil -lint "$APP/Contents/Info.plist"
-          /usr/bin/plutil -p "$APP/Contents/Info.plist"
-
-          file "$APP/Contents/MacOS/bin/gnatstudio_exe"
-          otool -arch arm64 -hv "$APP/Contents/MacOS/bin/gnatstudio_exe"
-
-          echo '--- Checking external Homebrew dylib references ---'
-          bad=0
-
-          while IFS= read -r -d '' macho; do
-            if otool -L "$macho" | grep -E '/opt/homebrew/|/usr/local/opt/|/Cellar/' >/dev/null 2>&1; then
-              echo "EXTERNAL LINK: $macho"
-              otool -L "$macho"
-              bad=1
-            fi
-          done < <(
-            find "$APP/Contents" -type f \(               -name '*.dylib' -o -name '*.so' -o -name '*.bundle' -o               -name 'gnatstudio_exe' -o -name 'gdk-pixbuf-query-loaders'             \) -print0
-          )
-
-          test "$bad" -eq 0
-          codesign --verify --deep --strict --verbose=2 "$APP"
-          hdiutil imageinfo "$DMG" >/dev/null
-
-      - name: Upload artifacts
+      - name: Upload install tree
         uses: actions/upload-artifact@v4
         with:
-          name: gnatstudio-macos27-arm64-${{ github.sha }}
-          path: |
-            _bundle/*.dmg
-            _bundle/*.app/*
+          name: gnatstudio-macos27-arm64-install-${{ github.sha }}
+          path: _install
           if-no-files-found: error
