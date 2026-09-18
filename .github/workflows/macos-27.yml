@@ -238,10 +238,19 @@ jobs:
 
           GPRBUILD_REAL="$(find "${HOME}/.local/share/alire/toolchains" "${ALIRE_PREFIX}/bin" -name gprbuild -type f 2>/dev/null | head -1)"
 
-          GNATCOLL_CORE_DIR="$(echo "${GPR_PROJECT_PATH}" | tr ':' '\n' | grep '/core$' | head -1)"
+          # Symlink all needed .gpr files into the build directory
+          for dir in $(echo "${GPR_PROJECT_PATH}" | tr ':' ' '); do
+            for gpr in "${dir}"/*.gpr; do
+              test -f "${gpr}" || continue
+              bn="$(basename "${gpr}")"
+              if [ ! -f "${bn}" ]; then
+                ln -s "${gpr}" "${bn}"
+              fi
+            done
+          done
+          ls -la *.gpr 2>/dev/null
 
           "${GPRBUILD_REAL}" -j0 -p \
-            -aP "${GNATCOLL_CORE_DIR}" \
             -Pgnatcoll_python.gpr \
             --target=aarch64-darwin \
             -XGNATCOLL_PYTHON_CFLAGS="${PYTHON_CFLAGS}" \
