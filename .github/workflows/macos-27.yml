@@ -384,6 +384,40 @@ jobs:
 
           find "${GNATCOLL_PYTHON_PREFIX}/share/gpr" -maxdepth 1 -type f -print | sort
 
+      - name: Build xmlada
+        shell: bash
+        run: |
+          set -euxo pipefail
+          source .ci/alire-env.sh
+          export GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
+
+          XMLADA_DIR=$(find "${HOME}/.local/share/alire/builds" -path "*/xmlada_*" -type d -mindepth 1 -maxdepth 1 2>/dev/null | head -1)
+          echo "Building xmlada in ${XMLADA_DIR}"
+          cd "${XMLADA_DIR}"
+
+          gprbuild -j"$(sysctl -n hw.ncpu)" -p -Pxmlada.gpr \
+            -XXMLADA_BUILD=relocatable \
+            -XLIBRARY_TYPE=relocatable \
+            -XBUILD=Production
+
+      - name: Build gtkada
+        shell: bash
+        run: |
+          set -euxo pipefail
+          source .ci/alire-env.sh
+          export GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
+
+          GTKADA_DIR=$(find "${HOME}/.local/share/alire/builds" -path "*/gtkada_*" -type d -mindepth 1 -maxdepth 1 2>/dev/null | head -1)
+          echo "Building gtkada in ${GTKADA_DIR}"
+          cd "${GTKADA_DIR}"
+
+          gprbuild -j"$(sysctl -n hw.ncpu)" -p -Pgtkada.gpr \
+            -XXMLADA_BUILD=relocatable \
+            -XLIBRARY_TYPE=relocatable \
+            -XBUILD=Production
+
       - name: Regenerate configure (update ax_python_devel.m4)
         shell: bash
         run: |
