@@ -225,6 +225,28 @@ jobs:
           rm -rf .ci/gnatcoll-bindings
           git clone --depth 1 --branch v26.0.0 https://github.com/AdaCore/gnatcoll-bindings.git .ci/gnatcoll-bindings
 
+          GNATCOLL_CORE_DIR="$(echo "${GPR_PROJECT_PATH}" | tr ':' '\n' | grep 'gnatcoll_26' | grep '/core$')"
+          GNATCOLL_MINIMAL_DIR="$(echo "${GPR_PROJECT_PATH}" | tr ':' '\n' | grep 'gnatcoll_minimal' | grep '/minimal$')"
+          GNATCOLL_PROJECTS_DIR="$(echo "${GPR_PROJECT_PATH}" | tr ':' '\n' | grep 'gnatcoll_projects' | grep '/projects$')"
+          GTKADA_DIR="$(echo "${GPR_PROJECT_PATH}" | tr ':' '\n' | grep 'gtkada' | grep '/src$')"
+          LIBGPR_DIR="$(echo "${GPR_PROJECT_PATH}" | tr ':' '\n' | grep 'libgpr' | grep '/gpr$')"
+
+          cat > "${GITHUB_WORKSPACE}/.ci/bin/gprbuild" <<'WRAPPER'
+          #!/bin/bash
+          REAL_GPRBUILD="$(/usr/bin/env -u PATH command -v gprbuild 2>/dev/null || true)"
+          if [ -z "$REAL_GPRBUILD" ]; then
+            REAL_GPRBUILD="$(find "${GITHUB_WORKSPACE}/.ci/alire_prefix/bin" "${HOME}/.local/share/alire/toolchains" -name gprbuild -type f 2>/dev/null | head -1)"
+          fi
+          exec "$REAL_GPRBUILD" \
+            -aP "${GNATCOLL_CORE_DIR}" \
+            -aP "${GNATCOLL_MINIMAL_DIR}" \
+            -aP "${GNATCOLL_PROJECTS_DIR}" \
+            -aP "${GTKADA_DIR}" \
+            -aP "${LIBGPR_DIR}" \
+            "$@"
+          WRAPPER
+          chmod +x "${GITHUB_WORKSPACE}/.ci/bin/gprbuild"
+
           cd .ci/gnatcoll-bindings/python3
           "${PYTHON}" setup.py build --python-exec "${PYTHON}"
           "${PYTHON}" setup.py install --prefix="${GNATCOLL_PYTHON_PREFIX}"
