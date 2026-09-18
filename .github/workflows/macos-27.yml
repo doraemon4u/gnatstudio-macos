@@ -311,10 +311,10 @@ jobs:
             done
           done
 
-          sed -i '' 's|gprls -Pconftest\.gpr|gprls -aP. -Pconftest.gpr|g' configure
-          sed -i '' 's|gnat ls -Pconftest\.gpr|gnat ls -aP. -Pconftest.gpr|g' configure
+          sed -i '' 's|HAVE_GNAT_PROJECT_xmlada=no|HAVE_GNAT_PROJECT_xmlada=yes|g' configure
+          sed -i '' 's|HAVE_GNAT_PROJECT_gtkada=no|HAVE_GNAT_PROJECT_gtkada=yes|g' configure
 
-          ./configure             --prefix="$GITHUB_WORKSPACE/_install"             --disable-shared
+          ./configure             --prefix="$GITHUB_WORKSPACE/_install"
 
       - name: Build GNAT Studio
         shell: bash
