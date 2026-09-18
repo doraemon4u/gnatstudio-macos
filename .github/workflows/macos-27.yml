@@ -198,12 +198,7 @@ jobs:
           cd .ci/gnatstudio-deps
 
           alr -n init --bin gnatstudiodeps
-
-          echo '--- Debug: directory state after alr init ---'
-          pwd
-          ls -la
-          test -f alire.toml && echo "alire.toml EXISTS" || echo "alire.toml MISSING"
-          cat alire.toml 2>/dev/null || true
+          cd gnatstudiodeps
 
           alr with gtkada=26.0.0
           alr with xmlada=26.0.0
