@@ -230,6 +230,7 @@ jobs:
           GNATCOLL_PROJECTS_DIR="$(echo "${GPR_PROJECT_PATH}" | tr ':' '\n' | grep 'gnatcoll_projects' | grep '/projects$')"
           GTKADA_DIR="$(echo "${GPR_PROJECT_PATH}" | tr ':' '\n' | grep 'gtkada' | grep '/src$')"
           LIBGPR_DIR="$(echo "${GPR_PROJECT_PATH}" | tr ':' '\n' | grep 'libgpr' | grep '/gpr$')"
+          export GNATCOLL_CORE_DIR GNATCOLL_MINIMAL_DIR GNATCOLL_PROJECTS_DIR GTKADA_DIR LIBGPR_DIR
 
           cat > "${GITHUB_WORKSPACE}/.ci/bin/gprbuild" <<'WRAPPER'
           #!/bin/bash
