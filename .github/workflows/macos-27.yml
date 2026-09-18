@@ -300,6 +300,15 @@ jobs:
           set -euxo pipefail
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
 
+          for p in $(echo "${GPR_PROJECT_PATH}" | tr ':' ' '); do
+            test -d "${p}" || continue
+            for f in "${p}"/*.gpr; do
+              test -f "${f}" || continue
+              bn="$(basename "${f}")"
+              test -f "${bn}" || ln -s "${f}" "${bn}"
+            done
+          done
+
           ./configure             --prefix="$GITHUB_WORKSPACE/_install"             --disable-shared
 
       - name: Build GNAT Studio
