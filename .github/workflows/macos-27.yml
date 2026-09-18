@@ -409,30 +409,18 @@ jobs:
           export GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
 
-          GTKADA_DIR=$(find "${HOME}/.local/share/alire/builds" -path "*/gtkada_*" -type d -mindepth 1 -maxdepth 1 2>/dev/null | head -1)
-          echo "Building gtkada in ${GTKADA_DIR}"
-          cd "${GTKADA_DIR}"
-
-          SHARED_GPR=$(find "${GTKADA_DIR}" -name "gtkada_shared.gpr" -type f 2>/dev/null | head -1)
-          GTKADA_GPR=$(find "${GTKADA_DIR}" -name "gtkada.gpr" -type f 2>/dev/null | head -1)
+          GTKADA_GPR=$(find "${HOME}/.local/share/alire/builds" -path "*/gtkada_*/src/gtkada.gpr" -type f 2>/dev/null | head -1)
           GTKADA_SRC=$(dirname "${GTKADA_GPR}")
-          echo "Patching: ${SHARED_GPR}"
-          echo "Building from: ${GTKADA_SRC}"
-          echo "=== Before ==="
-          grep -n "Switches" "${SHARED_GPR}" | head -5
-
-          sed -i.bak 's/for Compiler_Switches ("Ada") use/for Compiler_Switches ("Ada") use ("-gnatX",/' "${SHARED_GPR}"
-          sed -i.bak 's/for Default_Switches ("Ada") use/for Default_Switches ("Ada") use ("-gnatX",/' "${SHARED_GPR}"
-          sed -i.bak 's/for Switches ("Ada") use/for Switches ("Ada") use ("-gnatX",/' "${SHARED_GPR}"
-
-          echo "=== After ==="
-          grep -n "gnatX" "${SHARED_GPR}" || echo "(gnatX NOT found!)"
-
+          echo "GtkAda GPR: ${GTKADA_GPR}"
           cd "${GTKADA_SRC}"
-          gprbuild -v -j"$(sysctl -n hw.ncpu)" -p -P"${GTKADA_GPR}" \
+
+          # Use -cargs:ada to append -gnatX AFTER project file switches.
+          # Do NOT sed project files — multi-line 'use' constructs break syntax.
+          gprbuild -j"$(sysctl -n hw.ncpu)" -p -P"${GTKADA_GPR}" \
             -XXMLADA_BUILD=relocatable \
             -XLIBRARY_TYPE=relocatable \
-            -XBUILD=Production 2>&1 | tail -50
+            -XBUILD=Production \
+            -cargs:ada -gnatX
 
       - name: Regenerate configure (update ax_python_devel.m4)
         shell: bash
