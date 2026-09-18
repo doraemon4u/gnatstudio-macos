@@ -162,17 +162,51 @@ jobs:
 
           alr init --bin gnatstudio-deps
 
-          alr with gtkada^26.0.0
-          alr with xmlada^26.0.0
-          alr with gnatcoll^26.0.0
-          alr with vss_extra^26.0.0
-          alr with vss_text^26.2.0
+          # Fetch/deploy the Ada dependencies, but do NOT build them here.
+          # GNAT Studio's own GPR build will compile dependent Ada projects as needed.
+          #
+          # Keep VSS releases coherent: vss_extra 26.2.0 requires vss_text ^26.2.0.
+          alr with gtkada=26.0.0
+          alr with xmlada=26.0.0
+          alr with gnatcoll=26.0.0
+          alr with gnatcoll_projects=26.0.0
+          alr with vss_extra=26.2.0
+          alr with vss_text=26.2.0
 
-          alr build
+          # Print the workspace environment without triggering another build.
           alr printenv --unix > "$GITHUB_WORKSPACE/.ci/alire-env.sh"
+
+          echo '--- Alire dependency solution ---'
+          alr show gtkada
+          alr show xmlada
+          alr show gnatcoll
+          alr show gnatcoll_projects
+          alr show vss_extra
+          alr show vss_text
 
           echo '--- Alire environment ---'
           cat "$GITHUB_WORKSPACE/.ci/alire-env.sh"
+
+      - name: Inspect resolved Ada projects
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          source .ci/alire-env.sh
+
+          echo '--- Workspace ---'
+          pwd
+          ls -la .ci/gnatstudio-deps
+
+          echo '--- GPR_PROJECT_PATH ---'
+          printf '%s\n' "${GPR_PROJECT_PATH:-}"
+
+          echo '--- Located project files ---'
+          IFS=':' read -ra paths <<< "${GPR_PROJECT_PATH:-}"
+          for d in "${paths[@]}"; do
+            [ -d "$d" ] || continue
+            find "$d" -maxdepth 2 -type f \(               -name 'gtkada.gpr'               -o -name 'xmlada.gpr'               -o -name 'gnatcoll.gpr'               -o -name 'gnatcoll_projects.gpr'               -o -name 'vss_text.gpr'               -o -name 'vss_extra.gpr'             \) -print
+          done
 
       - name: Build GNATcoll Python 3 binding for macOS
         shell: bash
