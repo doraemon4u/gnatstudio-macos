@@ -223,7 +223,7 @@ jobs:
           export MACOSX_DEPLOYMENT_TARGET=27.0
 
           rm -rf .ci/gnatcoll-bindings
-          git clone --depth 1 https://github.com/AdaCore/gnatcoll-bindings.git .ci/gnatcoll-bindings
+          git clone --depth 1 --branch v26.0.0 https://github.com/AdaCore/gnatcoll-bindings.git .ci/gnatcoll-bindings
 
           cd .ci/gnatcoll-bindings/python3
           "${PYTHON}" setup.py build --python-exec "${PYTHON}"
