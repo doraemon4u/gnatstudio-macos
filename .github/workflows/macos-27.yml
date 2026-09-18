@@ -232,20 +232,19 @@ jobs:
           LIBGPR_DIR="$(echo "${GPR_PROJECT_PATH}" | tr ':' '\n' | grep 'libgpr' | grep '/gpr$')"
           export GNATCOLL_CORE_DIR GNATCOLL_MINIMAL_DIR GNATCOLL_PROJECTS_DIR GTKADA_DIR LIBGPR_DIR
 
-          cat > "${GITHUB_WORKSPACE}/.ci/bin/gprbuild" <<'WRAPPER'
-          #!/bin/bash
-          REAL_GPRBUILD="$(/usr/bin/env -u PATH command -v gprbuild 2>/dev/null || true)"
-          if [ -z "$REAL_GPRBUILD" ]; then
-            REAL_GPRBUILD="$(find "${GITHUB_WORKSPACE}/.ci/alire_prefix/bin" "${HOME}/.local/share/alire/toolchains" -name gprbuild -type f 2>/dev/null | head -1)"
-          fi
-          exec "$REAL_GPRBUILD" \
-            -aP "${GNATCOLL_CORE_DIR}" \
-            -aP "${GNATCOLL_MINIMAL_DIR}" \
-            -aP "${GNATCOLL_PROJECTS_DIR}" \
-            -aP "${GTKADA_DIR}" \
-            -aP "${LIBGPR_DIR}" \
-            "$@"
-          WRAPPER
+          REAL_GPRBUILD="$(find "${GITHUB_WORKSPACE}/.ci/alire_prefix/bin" "${HOME}/.local/share/alire/toolchains" -name gprbuild -type f 2>/dev/null | head -1)"
+          echo "Real gprbuild: ${REAL_GPRBUILD}"
+
+          cat > "${GITHUB_WORKSPACE}/.ci/bin/gprbuild" <<WRAPPER
+#!/bin/bash
+exec "${REAL_GPRBUILD}" \\
+  -aP "${GNATCOLL_CORE_DIR}" \\
+  -aP "${GNATCOLL_MINIMAL_DIR}" \\
+  -aP "${GNATCOLL_PROJECTS_DIR}" \\
+  -aP "${GTKADA_DIR}" \\
+  -aP "${LIBGPR_DIR}" \\
+  "\$@"
+WRAPPER
           chmod +x "${GITHUB_WORKSPACE}/.ci/bin/gprbuild"
 
           cd .ci/gnatcoll-bindings/python3
