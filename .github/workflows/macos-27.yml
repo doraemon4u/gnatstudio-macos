@@ -3,10 +3,8 @@ name: GNAT Studio - macOS 27 ARM64
 on:
   workflow_dispatch:
   push:
-    branches:
-      - master
-    tags:
-      - 'v*'
+    branches: [master]
+    tags: ['v*']
 
 permissions:
   contents: read
@@ -31,12 +29,14 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Inspect runner architecture
+      - name: Inspect runner
         shell: bash
         run: |
           set -euxo pipefail
           sw_vers
           uname -a
+          echo "uname -m: $(uname -m)"
+          echo "arch: $(arch)"
           test "$(uname -m)" = arm64
           test "$(arch)" = arm64
           xcodebuild -version
@@ -47,80 +47,102 @@ jobs:
         run: |
           set -euxo pipefail
 
-          # GitHub's ARM64 runner uses the ARM Homebrew prefix.
-          BREW_PREFIX="$(arch -arm64 brew --prefix)"
+          BREW_PREFIX="$(/usr/bin/arch -arm64 /usr/bin/env brew --prefix)"
+          test "$BREW_PREFIX" = "/opt/homebrew"
 
           echo "BREW_PREFIX=${BREW_PREFIX}" >> "$GITHUB_ENV"
-          echo "${BREW_PREFIX}/bin" >> "$GITHUB_PATH"
-          echo "${BREW_PREFIX}/sbin" >> "$GITHUB_PATH"
 
-          arch -arm64 brew --version
-          arch -arm64 brew config | sed -n '1,80p'
+          # IMPORTANT:
+          # Alire itself executes a bare `brew` command. Put this wrapper FIRST
+          # in PATH so Alire can never invoke /usr/local/bin/brew or a Rosetta
+          # Homebrew instance.
+          mkdir -p "$GITHUB_WORKSPACE/.ci/bin"
 
-          test -x "${BREW_PREFIX}/bin/brew"
+          cat > "$GITHUB_WORKSPACE/.ci/bin/brew" <<'EOF'
+          #!/bin/bash
+          set -e
+          exec /usr/bin/arch -arm64 /opt/homebrew/bin/brew "$@"
+          EOF
+          chmod +x "$GITHUB_WORKSPACE/.ci/bin/brew"
+
+          echo "$GITHUB_WORKSPACE/.ci/bin" >> "$GITHUB_PATH"
+          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+          echo "/opt/homebrew/sbin" >> "$GITHUB_PATH"
+
+          export PATH="$GITHUB_WORKSPACE/.ci/bin:/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
+
+          command -v brew
+          file "$(command -v brew)"
+          brew --version
+          brew config | sed -n '1,100p'
+
+          # The wrapper must force native ARM even when called by another process.
+          /usr/bin/arch -arm64 brew --version >/dev/null
+
+          # Verify the actual executable selected by Homebrew.
+          file /opt/homebrew/bin/brew
 
       - name: Install native dependencies
         shell: bash
         run: |
           set -euxo pipefail
 
-          arch -arm64 brew install             make             pkgconf             gtk+3             gobject-introspection             pygobject3             py3cairo             python@3.14             dylibbundler
+          export PATH="$GITHUB_WORKSPACE/.ci/bin:/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
 
-          BREW_PREFIX="${BREW_PREFIX:-$(arch -arm64 brew --prefix)}"
-          GTK_PREFIX="$(arch -arm64 brew --prefix gtk+3)"
-          PYTHON_PREFIX="$(arch -arm64 brew --prefix "python@${PYTHON_VERSION}")"
+          brew install             make             pkgconf             gtk+3             gobject-introspection             pygobject3             py3cairo             python@3.14             dylibbundler
+
+          GTK_PREFIX="$(brew --prefix gtk+3)"
+          PYTHON_PREFIX="$(brew --prefix "python@${PYTHON_VERSION}")"
 
           echo "GTK_PREFIX=${GTK_PREFIX}" >> "$GITHUB_ENV"
           echo "PYTHON_PREFIX=${PYTHON_PREFIX}" >> "$GITHUB_ENV"
 
-          # GNU make must appear as `make`, not only as `gmake`.
           echo "${BREW_PREFIX}/opt/make/libexec/gnubin" >> "$GITHUB_PATH"
           echo "${PYTHON_PREFIX}/bin" >> "$GITHUB_PATH"
 
-          # Make absolutely sure every probe sees the ARM tools.
-          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${PYTHON_PREFIX}/bin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PATH}"
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${PYTHON_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PATH}"
 
+          command -v brew
           command -v make
-          make --version | head -1
           command -v pkg-config
+          make --version | head -1
           pkg-config --version
           pkg-config --modversion gtk+-3.0
 
-          arch -arm64 brew list --versions make gtk+3 python@3.14
+          echo '--- Homebrew package state ---'
+          brew list --versions make gtk+3 python@3.14
+          brew info --json=v1 make | python3 -m json.tool | sed -n '1,120p'
 
       - name: Install native ARM64 Alire
         shell: bash
         run: |
           set -euxo pipefail
 
+          rm -rf .ci/alire_bin
           mkdir -p .ci/alire_bin
           cd .ci/alire_bin
 
           curl -fL             -o alire.zip             "https://github.com/alire-project/alire/releases/download/v${ALIRE_VERSION}/alr-${ALIRE_VERSION}-bin-aarch64-macos.zip"
 
-          unzip -q -o alire.zip "bin/alr*" 
+          unzip -q -o alire.zip "bin/alr*"
           rm alire.zip
-
           chmod +x bin/alr*
-          echo "$GITHUB_WORKSPACE/.ci/alire_bin/bin" >> "$GITHUB_PATH"
 
           file "$GITHUB_WORKSPACE/.ci/alire_bin/bin/alr"
           "$GITHUB_WORKSPACE/.ci/alire_bin/bin/alr" --version
 
-          # Hard fail if Alire accidentally runs as x86_64/Rosetta.
-          file "$GITHUB_WORKSPACE/.ci/alire_bin/bin/alr" | grep -q 'arm64'
-          test "$(arch -arm64 "$GITHUB_WORKSPACE/.ci/alire_bin/bin/alr" --version >/dev/null; echo $?)" = 0
+          file "$GITHUB_WORKSPACE/.ci/alire_bin/bin/alr" | grep -qi arm64
 
-          "$GITHUB_WORKSPACE/.ci/alire_bin/bin/alr" version | sed -n '1,120p'
+          echo "$GITHUB_WORKSPACE/.ci/alire_bin/bin" >> "$GITHUB_PATH"
 
       - name: Install GNAT / GPRBuild through native Alire
         shell: bash
         run: |
           set -euxo pipefail
 
-          ALR="$GITHUB_WORKSPACE/.ci/alire_bin/bin/alr"
-          export PATH="$GITHUB_WORKSPACE/.ci/alire_bin/bin:${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${PATH}"
+          export PATH="$GITHUB_WORKSPACE/.ci/bin:$GITHUB_WORKSPACE/.ci/alire_bin/bin:${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${PATH}"
 
+          ALR="$GITHUB_WORKSPACE/.ci/alire_bin/bin/alr"
           rm -rf "$ALIRE_PREFIX"
 
           "$ALR" -n install             gnat_native=16.1.0             gprbuild=26.0.1             --prefix="$ALIRE_PREFIX"
@@ -135,35 +157,38 @@ jobs:
         run: |
           set -euxo pipefail
 
-          export PATH="$ALIRE_PREFIX/bin:$GITHUB_WORKSPACE/.ci/alire_bin/bin:${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${PATH}"
+          export PATH="$ALIRE_PREFIX/bin:$GITHUB_WORKSPACE/.ci/bin:$GITHUB_WORKSPACE/.ci/alire_bin/bin:${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${PATH}"
 
           command -v alr
           command -v gnat
           command -v gprbuild
+          command -v brew
 
-          echo '--- Alire ---'
+          echo '--- Toolchain ---'
           alr --version
-
-          echo '--- GNAT ---'
           gnat --version
-
-          echo '--- GPRBuild ---'
           gprbuild --version
 
-          echo '--- Architectures ---'
+          echo '--- Architecture ---'
           file "$(command -v alr)"
           file "$(command -v gnat)"
           file "$(command -v gprbuild)"
+          file "$(command -v brew)"
 
           echo '--- Target ---'
-          gnat -v 2>&1 | sed -n '1,24p'
+          gnat -v 2>&1 | sed -n '1,30p'
 
       - name: Resolve GNAT Studio Ada dependencies
         shell: bash
         run: |
           set -euxo pipefail
 
-          export PATH="$ALIRE_PREFIX/bin:$GITHUB_WORKSPACE/.ci/alire_bin/bin:${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${PATH}"
+          export PATH="$GITHUB_WORKSPACE/.ci/bin:$ALIRE_PREFIX/bin:$GITHUB_WORKSPACE/.ci/alire_bin/bin:${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${PATH}"
+
+          echo '--- Effective brew ---'
+          command -v brew
+          file "$(command -v brew)"
+          brew config | grep -E 'HOMEBREW_PREFIX|CPU|macOS|Rosetta' || true
 
           rm -rf .ci/gnatstudio-deps
           mkdir -p .ci/gnatstudio-deps
@@ -171,14 +196,8 @@ jobs:
 
           alr init --bin gnatstudio-deps
 
-          # Ensure Alire itself and the subprocesses it launches use native ARM Homebrew.
-          export HOMEBREW_PREFIX="${BREW_PREFIX}"
-          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PATH}"
-
-          make --version | head -1
-          pkg-config --modversion gtk+-3.0
-          arch -arm64 brew info --json=v1 make gtk+3 | head -c 2000 || true
-
+          # Alire invokes bare `brew`; the wrapper above is therefore the
+          # actual fix for the ARM/Rosetta issue.
           alr -d with gtkada=26.0.0
           alr -d with xmlada=26.0.0
           alr -d with gnatcoll=26.0.0
@@ -187,9 +206,6 @@ jobs:
           alr -d with vss_text=26.2.0
 
           alr printenv --unix > "$GITHUB_WORKSPACE/.ci/alire-env.sh"
-
-          echo '--- Alire dependency solution ---'
-          alr with
 
           echo '--- Alire environment ---'
           cat "$GITHUB_WORKSPACE/.ci/alire-env.sh"
@@ -200,7 +216,7 @@ jobs:
           set -euxo pipefail
 
           source .ci/alire-env.sh
-          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
           export PYTHON="${PYTHON_PREFIX}/bin/python${PYTHON_VERSION}"
           export MACOSX_DEPLOYMENT_TARGET=27.0
 
@@ -211,12 +227,11 @@ jobs:
           "${PYTHON}" setup.py build --python-exec "${PYTHON}"
           "${PYTHON}" setup.py install --prefix="${GNATCOLL_PYTHON_PREFIX}"
 
-          find "${GNATCOLL_PYTHON_PREFIX}" -maxdepth 5 -type f | sort | sed -n '1,200p'
-
-      - name: Compose GPR / linker environment
+      - name: Compose GPR environment
         shell: bash
         run: |
           set -euxo pipefail
+
           source .ci/alire-env.sh
 
           GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
@@ -229,7 +244,6 @@ jobs:
           echo "LIBRARY_PATH=${LIBRARY_PATH}" >> "$GITHUB_ENV"
           echo "DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}" >> "$GITHUB_ENV"
 
-          test -d "${GNATCOLL_PYTHON_PREFIX}/share/gpr"
           find "${GNATCOLL_PYTHON_PREFIX}/share/gpr" -maxdepth 1 -type f -print | sort
 
       - name: Configure GNAT Studio
@@ -238,21 +252,7 @@ jobs:
           set -euxo pipefail
 
           source .ci/alire-env.sh
-          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
-          export CC=clang
-          export CXX=clang++
-          export MACOSX_DEPLOYMENT_TARGET=27.0
-          export CFLAGS="-O2 -mmacosx-version-min=27.0"
-          export CXXFLAGS="-O2 -mmacosx-version-min=27.0"
-          export LDFLAGS="-mmacosx-version-min=27.0"
-
-          echo '--- Configure inputs ---'
-          command -v gnat
-          command -v gprbuild
-          command -v make
-          command -v pkg-config
-          pkg-config --modversion gtk+-3.0
-          printf '%s\n' "${GPR_PROJECT_PATH}"
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
 
           ./configure             --prefix="$GITHUB_WORKSPACE/_install"             --disable-shared
 
@@ -260,9 +260,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-
           source .ci/alire-env.sh
-          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
           export MACOSX_DEPLOYMENT_TARGET=27.0
 
           make BUILD=Production -j"$(sysctl -n hw.ncpu)"
@@ -271,10 +270,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-
           source .ci/alire-env.sh
-          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
-          export MACOSX_DEPLOYMENT_TARGET=27.0
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
 
           make install-strip prefix="$GITHUB_WORKSPACE/_install"
 
