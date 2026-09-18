@@ -302,12 +302,13 @@ jobs:
           export GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
 
-          echo '--- gprls location ---'
-          command -v gprls && gprls --version || echo "gprls not found"
-          echo "--- GPR_PROJECT_PATH entries ---"
           for p in $(echo "${GPR_PROJECT_PATH}" | tr ':' ' '); do
-            echo "  ${p}: $(ls -1 "${p}"/*.gpr 2>/dev/null | wc -l) .gpr files"
-            ls -1 "${p}"/*.gpr 2>/dev/null || true
+            [ -d "${p}" ] || continue
+            for f in "${p}"/*.gpr; do
+              [ -f "${f}" ] || continue
+              bn="$(basename "${f}")"
+              [ -f "${bn}" ] || cp -p "${f}" "${bn}"
+            done
           done
 
           ./configure             --prefix="$GITHUB_WORKSPACE/_install"             --disable-shared
