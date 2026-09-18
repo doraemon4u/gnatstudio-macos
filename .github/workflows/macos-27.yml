@@ -417,7 +417,7 @@ jobs:
             -XXMLADA_BUILD=relocatable \
             -XLIBRARY_TYPE=relocatable \
             -XBUILD=Production \
-            -cargs -gnatX
+            -gnatX
 
       - name: Regenerate configure (update ax_python_devel.m4)
         shell: bash
