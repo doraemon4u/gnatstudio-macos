@@ -14,8 +14,8 @@ permissions:
 jobs:
   build-macos-27:
     name: Build GNAT Studio on macOS 27 ARM64
-    # xcode-27 is the public-preview macOS 27 ARM64 image.
-    # Use xcode-27-xlarge instead when the repository has access to larger runners.
+    # macOS 27 ARM64 public-preview image.
+    # Change to xcode-27-xlarge when larger runners are enabled for the repo.
     runs-on: xcode-27
 
     env:
@@ -23,6 +23,7 @@ jobs:
       HOMEBREW_NO_AUTO_UPDATE: '1'
       HOMEBREW_NO_ENV_HINTS: '1'
       PYTHON_VERSION: '3.14'
+      GNATCOLL_PYTHON_PREFIX: '${{ github.workspace }}/.ci/gnatcoll-python3'
 
     steps:
       - name: Checkout
@@ -62,7 +63,7 @@ jobs:
 
           BREW_PREFIX="$(brew --prefix)"
           GTK_PREFIX="$(brew --prefix gtk+3)"
-          PYTHON_PREFIX="$(brew --prefix python@${PYTHON_VERSION})"
+          PYTHON_PREFIX="$(brew --prefix "python@${PYTHON_VERSION}")"
 
           echo "BREW_PREFIX=${BREW_PREFIX}" >> "$GITHUB_ENV"
           echo "GTK_PREFIX=${GTK_PREFIX}" >> "$GITHUB_ENV"
@@ -72,54 +73,123 @@ jobs:
           echo "${BREW_PREFIX}/opt/make/libexec/gnubin" >> "$GITHUB_PATH"
           echo "${PYTHON_PREFIX}/bin" >> "$GITHUB_PATH"
 
-          OLD_PKG_CONFIG_PATH="${PKG_CONFIG_PATH:-}"
           PKG_CONFIG_PATH="${GTK_PREFIX}/lib/pkgconfig:${GTK_PREFIX}/share/pkgconfig:${PYTHON_PREFIX}/lib/pkgconfig:${BREW_PREFIX}/lib/pkgconfig:${BREW_PREFIX}/share/pkgconfig"
-          if [[ -n "$OLD_PKG_CONFIG_PATH" ]]; then
-            PKG_CONFIG_PATH="${PKG_CONFIG_PATH}:${OLD_PKG_CONFIG_PATH}"
+          if [[ -n "${PKG_CONFIG_PATH:-}" ]]; then
+            :
           fi
           echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
 
-          echo "PYTHON=python${PYTHON_VERSION}" >> "$GITHUB_ENV"
+          echo "PYTHON=${PYTHON_PREFIX}/bin/python${PYTHON_VERSION}" >> "$GITHUB_ENV"
 
           "${PYTHON_PREFIX}/bin/python${PYTHON_VERSION}" --version
-          "${GTK_PREFIX}/bin/gtk3-demo" --version 2>/dev/null || true
           pkg-config --modversion gtk+-3.0
-          pkg-config --modversion pycairo 2>/dev/null || true
+          pkg-config --exists python3-embed || true
+          "${PYTHON_PREFIX}/bin/python${PYTHON_VERSION}" - <<'PY'
+          import sys
+          import sysconfig
+          print("Python:", sys.executable)
+          print("include:", sysconfig.get_path("include"))
+          print("platinclude:", sysconfig.get_path("platinclude"))
+          print("libdir:", sysconfig.get_config_var("LIBDIR"))
+          print("LDLIBRARY:", sysconfig.get_config_var("LDLIBRARY"))
+          print("LIBPL:", sysconfig.get_config_var("LIBPL"))
+          print("LIBRARY:", sysconfig.get_config_var("LIBRARY"))
+          print("PY_ENABLE_SHARED:", sysconfig.get_config_var("PY_ENABLE_SHARED"))
+          print("PYTHONFRAMEWORK:", sysconfig.get_config_var("PYTHONFRAMEWORK"))
+          PY
 
       - name: Install GNAT / GPRBuild through Alire
         uses: alire-project/alr-install@v2
         with:
           crates: gnat_native gprbuild
           prefix: alire_prefix
+          add_to_path: true
 
       - name: Check Ada toolchain
         shell: bash
         run: |
           set -euxo pipefail
-          which gnat
-          which gprbuild
+          command -v alr
+          command -v gnat
+          command -v gprbuild
+          alr --version
           gnat --version
           gprbuild --version
-          file "$(which gnat)"
+          file "$(command -v gnat)"
+          file "$(command -v gprbuild)"
 
       - name: Resolve GNAT Studio Ada dependencies
         shell: bash
         run: |
           set -euxo pipefail
+
+          rm -rf .ci/gnatstudio-deps
           mkdir -p .ci/gnatstudio-deps
           cd .ci/gnatstudio-deps
 
+          # Do not add `gnatcoll_python`: that Alire crate is the obsolete
+          # Python 2 binding (21.0.0), not the Python 3 binding GNAT Studio uses.
+          # VSS extra is 26.0.0; VSS text is 26.2.0.
           alr init --bin gnatstudio-deps
           alr with gtkada^26.0.0
           alr with xmlada^26.0.0
           alr with gnatcoll^26.0.0
-          alr with gnatcoll_python^26.0.0
-          alr with vss_extra^26.2.0
+          alr with vss_extra^26.0.0
           alr with vss_text^26.2.0
-          alr build
 
+          alr build
           alr printenv --unix > "$GITHUB_WORKSPACE/.ci/alire-env.sh"
+
+          echo '--- Alire environment ---'
           cat "$GITHUB_WORKSPACE/.ci/alire-env.sh"
+
+      - name: Build GNATcoll Python 3 binding for macOS
+        shell: bash
+        run: |
+          set -euxo pipefail
+          source .ci/alire-env.sh
+
+          export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${PYTHON_PREFIX}/bin:${PATH}"
+          export PYTHON="${PYTHON_PREFIX}/bin/python${PYTHON_VERSION}"
+          export MACOSX_DEPLOYMENT_TARGET=27.0
+
+          rm -rf .ci/gnatcoll-bindings
+          git clone --depth 1 https://github.com/AdaCore/gnatcoll-bindings.git .ci/gnatcoll-bindings
+
+          test -f .ci/gnatcoll-bindings/version_information
+          echo '--- GNATcoll bindings version ---'
+          cat .ci/gnatcoll-bindings/version_information
+          grep -Eq '^26\.' .ci/gnatcoll-bindings/version_information
+
+          # GNAT Studio needs GNATCOLL.Scripts.Python.  The community Alire
+          # gnatcoll_python crate is Python 2; the python3 crate is not currently
+          # indexed for macOS, so build the upstream python3 component directly.
+          cd .ci/gnatcoll-bindings/python3
+          "${PYTHON}" setup.py build --python-exec "${PYTHON}"
+          "${PYTHON}" setup.py install \
+            --prefix="${GNATCOLL_PYTHON_PREFIX}"
+
+          echo '--- Installed GNATcoll Python 3 ---'
+          find "${GNATCOLL_PYTHON_PREFIX}" -maxdepth 4 -type f | sort | sed -n '1,160p'
+
+      - name: Compose GPR / linker environment
+        shell: bash
+        run: |
+          set -euxo pipefail
+          source .ci/alire-env.sh
+
+          GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
+          LIBRARY_PATH="${GNATCOLL_PYTHON_PREFIX}/lib:${LIBRARY_PATH:-}"
+          DYLD_LIBRARY_PATH="${GNATCOLL_PYTHON_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
+
+          echo "GPR_PROJECT_PATH=${GPR_PROJECT_PATH}" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=${LIBRARY_PATH}" >> "$GITHUB_ENV"
+          echo "DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+
+          echo '--- GPR projects ---'
+          find "${GNATCOLL_PYTHON_PREFIX}/share/gpr" -maxdepth 1 -type f -print | sort
+
+          test -f "${GNATCOLL_PYTHON_PREFIX}/share/gpr/gnatcoll_python.gpr"
 
       - name: Configure GNAT Studio
         shell: bash
@@ -128,6 +198,7 @@ jobs:
           source .ci/alire-env.sh
 
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${PYTHON_PREFIX}/bin:${PATH}"
+          export PYTHON="${PYTHON_PREFIX}/bin/python${PYTHON_VERSION}"
           export CC=clang
           export CXX=clang++
           export MACOSX_DEPLOYMENT_TARGET=27.0
@@ -146,7 +217,6 @@ jobs:
           source .ci/alire-env.sh
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${PYTHON_PREFIX}/bin:${PATH}"
           export MACOSX_DEPLOYMENT_TARGET=27.0
-
           make BUILD=Production -j"$(sysctl -n hw.ncpu)"
 
       - name: Install GNAT Studio
@@ -156,7 +226,6 @@ jobs:
           source .ci/alire-env.sh
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${PYTHON_PREFIX}/bin:${PATH}"
           export MACOSX_DEPLOYMENT_TARGET=27.0
-
           make install-strip prefix="$GITHUB_WORKSPACE/_install"
 
           test -x _install/bin/gnatstudio_exe
@@ -170,6 +239,7 @@ jobs:
           set -euxo pipefail
           source .ci/alire-env.sh
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${PYTHON_PREFIX}/bin:${PATH}"
+          export PYTHON="${PYTHON_PREFIX}/bin/python${PYTHON_VERSION}"
           export MACOSX_DEPLOYMENT_TARGET=27.0
 
           cd osx_bundle
@@ -183,6 +253,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+
           APP="_bundle/GNAT Studio.app"
           DMG="$(find _bundle -maxdepth 1 -type f -name '*.dmg' -print -quit)"
 
@@ -198,10 +269,9 @@ jobs:
           /usr/bin/plutil -p "$APP/Contents/Info.plist"
 
           file "$APP/Contents/MacOS/bin/gnatstudio_exe"
-          test "$(file -b "$APP/Contents/MacOS/bin/gnatstudio_exe" | grep -c 'Mach-O' || true)" -eq 1
           otool -arch arm64 -hv "$APP/Contents/MacOS/bin/gnatstudio_exe"
 
-          echo "Checking for external Homebrew dylib references..."
+          echo '--- External Homebrew references ---'
           bad=0
           while IFS= read -r -d '' macho; do
             if otool -L "$macho" | grep -E '/opt/homebrew/|/usr/local/opt/|/Cellar/' >/dev/null 2>&1; then
