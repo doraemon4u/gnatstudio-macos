@@ -311,6 +311,14 @@ jobs:
             done
           done
 
+          cat > "${GITHUB_WORKSPACE}/.ci/gprls" <<WRAPPER
+          #!/bin/bash
+          exec "${ALIRE_PREFIX}/bin/gprls" -aP. "\$@"
+          WRAPPER
+          chmod +x "${GITHUB_WORKSPACE}/.ci/gprls"
+
+          export PATH="${GITHUB_WORKSPACE}/.ci:${PATH}"
+
           ./configure             --prefix="$GITHUB_WORKSPACE/_install"             --disable-shared
 
       - name: Build GNAT Studio
