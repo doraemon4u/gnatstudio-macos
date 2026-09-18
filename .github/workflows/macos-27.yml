@@ -417,8 +417,15 @@ jobs:
           echo "GtkAda GPR: ${GTKADA_GPR}"
           cd "${GTKADA_SRC}/.."
 
-          sed -i.bak 's/for Compiler_Switches ("Ada") use/for Compiler_Switches ("Ada") use ("-gnatX",/' "${GTKADA_GPR}"
-          sed -i.bak 's/for Default_Switches ("Ada") use/for Default_Switches ("Ada") use ("-gnatX",/' "${GTKADA_GPR}"
+          echo "=== gtkada.gpr Compiler package ==="
+          grep -A20 -i "package Compiler" "${GTKADA_GPR}" || echo "(no Compiler package found)"
+
+          sed -i.bak 's/for Compiler_Switches ("[Aa]da") use/for Compiler_Switches ("ada") use ("-gnatX",/' "${GTKADA_GPR}"
+          sed -i.bak 's/for Default_Switches ("[Aa]da") use/for Default_Switches ("ada") use ("-gnatX",/' "${GTKADA_GPR}"
+          sed -i.bak 's/for Switches ("[Aa]da") use/for Switches ("ada") use ("-gnatX",/' "${GTKADA_GPR}"
+
+          echo "=== After sed: grep -n gnatX ==="
+          grep -n "gnatX" "${GTKADA_GPR}" || echo "(gnatX NOT found - sed matched nothing!)"
 
           gprbuild -j"$(sysctl -n hw.ncpu)" -p -Pgtkada.gpr \
             -XXMLADA_BUILD=relocatable \
