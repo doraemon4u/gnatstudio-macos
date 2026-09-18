@@ -409,18 +409,50 @@ jobs:
           export GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
 
+          SHARED_GPR=$(find "${HOME}/.local/share/alire/builds" -path "*/gtkada_*/gtkada_shared.gpr" -type f 2>/dev/null | head -1)
           GTKADA_GPR=$(find "${HOME}/.local/share/alire/builds" -path "*/gtkada_*/src/gtkada.gpr" -type f 2>/dev/null | head -1)
           GTKADA_SRC=$(dirname "${GTKADA_GPR}")
           echo "GtkAda GPR: ${GTKADA_GPR}"
+          echo "Shared GPR: ${SHARED_GPR}"
           cd "${GTKADA_SRC}"
 
-          # Use -cargs:ada to append -gnatX AFTER project file switches.
-          # Do NOT sed project files — multi-line 'use' constructs break syntax.
+          # Inject -gnatX into gtkada_shared.gpr using Python (handles multi-line use clauses)
+          python3 -c "
+import re, sys
+path = sys.argv[1]
+with open(path) as f:
+    lines = f.readlines()
+out = []
+i = 0
+while i < len(lines):
+    line = lines[i]
+    # Multi-line: 'for [Default_]Switches (\"Ada\") use' alone on line
+    if re.search(r'for\s+(Default_)?Switches\s+\(\"Ada\"\)\s+use\s*$', line.rstrip()):
+        out.append(line)
+        i += 1
+        if i < len(lines):
+            nxt = lines[i]
+            nxt = re.sub(r'^(\s*)\(', r'\1(\"-gnatX\", ', nxt, count=1)
+            out.append(nxt)
+    # Single-line: 'for [Default_]Switches (\"Ada\") use (...)' on one line
+    elif re.search(r'for\s+(Default_)?Switches\s+\(\"Ada\"\)\s+use\s+\(', line):
+        line = re.sub(r'(use\s+)\(', r'\1(\"-gnatX\", ', line, count=1)
+        out.append(line)
+    else:
+        out.append(line)
+    i += 1
+with open(path, 'w') as f:
+    f.writelines(out)
+print('Patched', path)
+" "${SHARED_GPR}"
+
+          echo "=== Verify -gnatX injection ==="
+          grep -n "gnatX" "${SHARED_GPR}" || echo "(gnatX NOT found!)"
+
           gprbuild -j"$(sysctl -n hw.ncpu)" -p -P"${GTKADA_GPR}" \
             -XXMLADA_BUILD=relocatable \
             -XLIBRARY_TYPE=relocatable \
-            -XBUILD=Production \
-            -cargs:ada -gnatX
+            -XBUILD=Production
 
       - name: Regenerate configure (update ax_python_devel.m4)
         shell: bash
