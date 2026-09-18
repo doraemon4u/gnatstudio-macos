@@ -213,6 +213,79 @@ jobs:
           echo '--- Alire environment ---'
           cat "$GITHUB_WORKSPACE/.ci/alire-env.sh"
 
+      - name: Generate _shared.gpr stubs from templates
+        shell: bash
+        run: |
+          set -euxo pipefail
+          source .ci/alire-env.sh
+          export PATH="${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${PATH}"
+
+          echo "--- Generating _shared.gpr stubs from .gpr.in templates ---"
+
+          # Find the GTK prefix via pkg-config
+          GTK_PREFIX="$(pkg-config gtk+-3.0 --variable=prefix 2>/dev/null || echo /opt/homebrew)"
+          echo "GTK_PREFIX=${GTK_PREFIX}"
+
+          # Find all _shared.gpr.in files in the Alire build cache and generate .gpr stubs
+          generated=0
+          for gpr_in in $(find "${HOME}/.local/share/alire/builds" -name "*_shared.gpr.in" 2>/dev/null); do
+            gpr_out="${gpr_in%.in}"
+            if [ ! -f "${gpr_out}" ]; then
+              sed \
+                -e 's/@PACKAGE_VERSION@/26.0.0/g' \
+                -e 's/@DEFAULT_LIBRARY_TYPE@/static/g' \
+                -e 's/@BUILD_TYPE@/Production/g' \
+                -e 's/@SO_EXT@/.dylib/g' \
+                -e 's/@NEED_OBJECTIVE_C@/no/g' \
+                -e "s|@GTK_PREFIX@|${GTK_PREFIX}|g" \
+                -e 's/@GTK_CFLAGS_GPR@//g' \
+                -e 's/@GTK_LIBS_GPR@//g' \
+                -e 's/@OBJC@/clang/g' \
+                -e 's/@PROCESSORS@/0/g' \
+                "${gpr_in}" > "${gpr_out}"
+              echo "Generated: ${gpr_out}"
+              generated=$((generated + 1))
+            fi
+          done
+
+          echo "Generated ${generated} _shared.gpr stubs"
+
+          # Verify the key stubs exist
+          echo "--- Verifying key project files ---"
+          for name in xmlada_shared gtkada_shared; do
+            found="$(find "${HOME}/.local/share/alire/builds" -name "${name}.gpr" 2>/dev/null | head -1)"
+            if [ -n "${found}" ]; then
+              echo "OK: ${found}"
+            else
+              echo "WARNING: ${name}.gpr not found"
+            fi
+          done
+
+          # Verify gtk.gpr is findable (system GTK+3 project from Homebrew)
+          gtk_gpr="$(find "${GTK_PREFIX}" -name "gtk.gpr" 2>/dev/null | head -1)"
+          if [ -n "${gtk_gpr}" ]; then
+            gtk_gpr_dir="$(dirname "${gtk_gpr}")"
+            echo "Found system gtk.gpr: ${gtk_gpr}"
+            # Make sure it's on GPR_PROJECT_PATH
+            if echo "${GPR_PROJECT_PATH}" | tr ':' '\n' | grep -qFx "${gtk_gpr_dir}"; then
+              echo "gtk.gpr dir already on GPR_PROJECT_PATH"
+            else
+              echo "Adding gtk.gpr dir to GPR_PROJECT_PATH: ${gtk_gpr_dir}"
+              GPR_PROJECT_PATH="${gtk_gpr_dir}:${GPR_PROJECT_PATH}"
+            fi
+          else
+            echo "WARNING: system gtk.gpr not found under ${GTK_PREFIX}"
+          fi
+
+          # Update GPR_PROJECT_PATH in alire-env.sh with any additions
+          if [ "${GPR_PROJECT_PATH}" != "$(grep '^export GPR_PROJECT_PATH=' "$GITHUB_WORKSPACE/.ci/alire-env.sh" | sed 's/^export GPR_PROJECT_PATH="//;s/"$//')" ]; then
+            sed -i.bak "s|^export GPR_PROJECT_PATH=.*|export GPR_PROJECT_PATH=\\\"${GPR_PROJECT_PATH}\\\"|" \
+              "$GITHUB_WORKSPACE/.ci/alire-env.sh"
+          fi
+
+          echo "--- Final GPR_PROJECT_PATH ---"
+          echo "${GPR_PROJECT_PATH}" | tr ':' '\n'
+
       - name: Build GNATcoll Python 3 binding
         shell: bash
         run: |
