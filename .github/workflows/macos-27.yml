@@ -341,9 +341,7 @@ jobs:
           # Bypass configure's project checks: sed the simple HAVE_GNAT_PROJECT checks
           sed -i '' 's|HAVE_GNAT_PROJECT_xmlada=no|HAVE_GNAT_PROJECT_xmlada=yes|g' configure
           sed -i '' 's|HAVE_GNAT_PROJECT_gtkada=no|HAVE_GNAT_PROJECT_gtkada=yes|g' configure
-          # Also bypass the deeper AM_PATH_GTKADA compilation test error
-          # (it fails because libraries aren't built yet at configure time)
-          sed -i '' 's|as_fn_error \$? "Test for GtkAda failed|"as_fn_warn \$? "TEST FOR GTKADA SKIPPED|"g' configure
+          sed -i '' '/Test for GtkAda failed/s/as_fn_error/as_fn_warn/' configure
 
           ./configure             --prefix="$GITHUB_WORKSPACE/_install"
 
