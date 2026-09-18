@@ -199,14 +199,12 @@ jobs:
 
           alr -n init --bin gnatstudiodeps
 
-          # Alire invokes bare `brew`; the wrapper above is therefore the
-          # actual fix for the ARM/Rosetta issue.
-          alr -d with gtkada=26.0.0
-          alr -d with xmlada=26.0.0
-          alr -d with gnatcoll=26.0.0
-          alr -d with gnatcoll_projects=26.0.0
-          alr -d with vss_extra=26.2.0
-          alr -d with vss_text=26.2.0
+          alr with gtkada=26.0.0
+          alr with xmlada=26.0.0
+          alr with gnatcoll=26.0.0
+          alr with gnatcoll_projects=26.0.0
+          alr with vss_extra=26.2.0
+          alr with vss_text=26.2.0
 
           alr printenv --unix > "$GITHUB_WORKSPACE/.ci/alire-env.sh"
 
