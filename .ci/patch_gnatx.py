@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Inject -gnatX into Ada Switches clauses in a GPR project file.
+"""Inject -gnatX -gnat2022 into Ada Switches clauses in a GPR project file.
 
 Handles both single-line and multi-line 'for Switches ("Ada") use' constructs.
 """
 import re
 import sys
+
+FLAGS = '"-gnatX", "-gnat2022"'
 
 def patch(path):
     with open(path) as f:
@@ -19,11 +21,11 @@ def patch(path):
             i += 1
             if i < len(lines):
                 nxt = lines[i]
-                nxt = re.sub(r'^(\s*)\(', r'\1("-gnatX", ', nxt, count=1)
+                nxt = re.sub(r'^(\s*)\(', f'\\1({FLAGS}, ', nxt, count=1)
                 out.append(nxt)
         # Single-line: 'for [Default_]Switches ("Ada") use (...)' on one line
         elif re.search(r'for\s+(Default_)?Switches\s+\("Ada"\)\s+use\s+\(', line):
-            line = re.sub(r'(use\s+)\(', r'\1("-gnatX", ', line, count=1)
+            line = re.sub(r'(use\s+)\(', f'\\1({FLAGS}, ', line, count=1)
             out.append(line)
         else:
             out.append(line)
