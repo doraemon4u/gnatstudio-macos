@@ -422,13 +422,6 @@ jobs:
           echo "=== Verify -gnatX injection ==="
           grep -n "gnatX" "${SHARED_GPR}" || echo "(gnatX NOT found!)"
 
-          # Patch canvas_view.ads: use Unchecked_Conversion for anonymous access params
-          # GNAT 16.1.0 rejects both implicit and explicit conversion of anonymous access
-          # parameters (Ada 2022 feature requires GNAT >= 26)
-          if [ -f "${GTKADA_SRC}/gtkada-canvas_view.ads" ]; then
-            python3 "${GITHUB_WORKSPACE}/.ci/patch_gtkada_anon_access.py" "${GTKADA_SRC}/gtkada-canvas_view.ads"
-          fi
-
           cd "${GTKADA_SRC}"
 
           gprbuild -j"$(sysctl -n hw.ncpu)" -p -P"${GTKADA_GPR}" \
