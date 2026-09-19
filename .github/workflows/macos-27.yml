@@ -230,6 +230,30 @@ jobs:
           GTK_LIBS_RAW="$(pkg-config --libs gtk+-3.0 2>/dev/null || echo '')"
           GTK_CFLAGS_GPR="$(echo "${GTK_CFLAGS_RAW}" | tr ' ' '\n' | grep -v '^$' | sed 's/^/"/;s/$/"/' | paste -sd, -)"
           GTK_LIBS_GPR="$(echo "${GTK_LIBS_RAW}" | tr ' ' '\n' | grep -v '^$' | sed 's/^/"/;s/$/"/' | paste -sd, -)"
+          # Append system libs needed by GtkAda misc.o on macOS (not in gtk+-3.0 pkg-config)
+          # fontconfig: _FcConfigAppFontAddFile; gmodule-2.0: _g_module_* symbols
+          EXTRA_LIBS_GPR='"-lfontconfig","-lgmodule-2.0"'
+          if [ -n "${GTK_LIBS_GPR}" ]; then
+            GTK_LIBS_GPR="${GTK_LIBS_GPR},${EXTRA_LIBS_GPR}"
+          else
+            GTK_LIBS_GPR="${EXTRA_LIBS_GPR}"
+          fi
+          # Also need CFLAGS for fontconfig/gmodule headers (for ObjC compilation)
+          FONTCONFIG_CFLAGS="$(pkg-config --cflags fontconfig 2>/dev/null || echo '')"
+          GMODULE_CFLAGS="$(pkg-config --cflags gmodule-2.0 2>/dev/null || echo '')"
+          EXTRA_CFLAGS_GPR=""
+          for f in ${FONTCONFIG_CFLAGS} ${GMODULE_CFLAGS}; do
+            if [ -n "${EXTRA_CFLAGS_GPR}" ]; then
+              EXTRA_CFLAGS_GPR="${EXTRA_CFLAGS_GPR},\"${f}\""
+            else
+              EXTRA_CFLAGS_GPR="\"${f}\""
+            fi
+          done
+          if [ -n "${GTK_CFLAGS_GPR}" ] && [ -n "${EXTRA_CFLAGS_GPR}" ]; then
+            GTK_CFLAGS_GPR="${GTK_CFLAGS_GPR},${EXTRA_CFLAGS_GPR}"
+          elif [ -n "${EXTRA_CFLAGS_GPR}" ]; then
+            GTK_CFLAGS_GPR="${EXTRA_CFLAGS_GPR}"
+          fi
           echo "GTK_CFLAGS_GPR=${GTK_CFLAGS_GPR}"
           echo "GTK_LIBS_GPR=${GTK_LIBS_GPR}"
 
@@ -243,7 +267,7 @@ jobs:
                 -e 's/@DEFAULT_LIBRARY_TYPE@/static/g' \
                 -e 's/@BUILD_TYPE@/Production/g' \
                 -e 's/@SO_EXT@/.dylib/g' \
-                -e 's/@NEED_OBJECTIVE_C@/no/g' \
+                -e 's/@NEED_OBJECTIVE_C@/yes/g' \
                 -e "s|@GTK_PREFIX@|${GTK_PREFIX}|g" \
                 -e "s|@GTK_CFLAGS_GPR@|${GTK_CFLAGS_GPR}|g" \
                 -e "s|@GTK_LIBS_GPR@|${GTK_LIBS_GPR}|g" \
