@@ -193,7 +193,9 @@ jobs:
           cd gnatstudiodeps
 
           for dep in "gtkada=26.0.0" "xmlada=26.0.0" "gnatcoll=26.0.0" \
-                     "gnatcoll_projects=26.0.0" "vss_extra=26.2.0" "vss_text=26.2.0"; do
+                     "gnatcoll_projects=26.0.0" "vss_extra=26.2.0" "vss_text=26.2.0" \
+                     "gnatcoll_xref=26.0.0" "libadalang=26.0.0" \
+                     "libadalang_tools=26.0.0" "ada_language_server=26.0.0"; do
             ok=0
             for attempt in 1 2 3; do
               if alr with "${dep}"; then ok=1; break; fi
@@ -562,12 +564,26 @@ jobs:
         run: |
           set -euxo pipefail
           source .ci/alire-env.sh
-          # Prepend xmlada wrapper dir so non-aggregate xmlada.gpr is found first
-          export GPR_PROJECT_PATH="${GITHUB_WORKSPACE}/_xmlada_wrapper:${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
+
+          ALIRE_EXTRA_PATHS=""
+          for p in $(echo "${GPR_PROJECT_PATH}" | tr ':' ' '); do
+            [ -d "${p}" ] || continue
+            parent="$(dirname "${p}")"
+            if ls "${parent}"/*.gpr >/dev/null 2>&1; then
+              ALIRE_EXTRA_PATHS="${ALIRE_EXTRA_PATHS}:${parent}"
+            fi
+            grandparent="$(dirname "${parent}")"
+            if [ "${grandparent}" != "${parent}" ] && ls "${grandparent}"/*.gpr >/dev/null 2>&1; then
+              ALIRE_EXTRA_PATHS="${ALIRE_EXTRA_PATHS}:${grandparent}"
+            fi
+          done
+          echo "ALIRE_EXTRA_PATHS=${ALIRE_EXTRA_PATHS}"
+
+          export GPR_PROJECT_PATH="${GITHUB_WORKSPACE}/_xmlada_wrapper:${GNATCOLL_PYTHON_PREFIX}/share/gpr${ALIRE_EXTRA_PATHS}:${GPR_PROJECT_PATH:-}"
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
 
-          echo "--- GPR_PROJECT_PATH (first 5 entries) ---"
-          echo "${GPR_PROJECT_PATH}" | tr ':' '\n' | head -5
+          echo "--- GPR_PROJECT_PATH ---"
+          echo "${GPR_PROJECT_PATH}" | tr ':' '\n'
 
           make BUILD=Production -j"$(sysctl -n hw.ncpu)"
 
@@ -576,7 +592,21 @@ jobs:
         run: |
           set -euxo pipefail
           source .ci/alire-env.sh
-          export GPR_PROJECT_PATH="${GITHUB_WORKSPACE}/_xmlada_wrapper:${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
+
+          ALIRE_EXTRA_PATHS=""
+          for p in $(echo "${GPR_PROJECT_PATH}" | tr ':' ' '); do
+            [ -d "${p}" ] || continue
+            parent="$(dirname "${p}")"
+            if ls "${parent}"/*.gpr >/dev/null 2>&1; then
+              ALIRE_EXTRA_PATHS="${ALIRE_EXTRA_PATHS}:${parent}"
+            fi
+            grandparent="$(dirname "${parent}")"
+            if [ "${grandparent}" != "${parent}" ] && ls "${grandparent}"/*.gpr >/dev/null 2>&1; then
+              ALIRE_EXTRA_PATHS="${ALIRE_EXTRA_PATHS}:${grandparent}"
+            fi
+          done
+
+          export GPR_PROJECT_PATH="${GITHUB_WORKSPACE}/_xmlada_wrapper:${GNATCOLL_PYTHON_PREFIX}/share/gpr${ALIRE_EXTRA_PATHS}:${GPR_PROJECT_PATH:-}"
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
 
           make install-strip prefix="$GITHUB_WORKSPACE/_install"
