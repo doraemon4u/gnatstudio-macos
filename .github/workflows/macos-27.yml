@@ -486,8 +486,7 @@ jobs:
           # alr with ada_language_server was skipped by Alire (missing deps).
           # Clone it directly to get lsp_3_17.gpr, lsp_client_glib_3_17.gpr, etc.
           ALS_DIR="${GITHUB_WORKSPACE}/_als_src"
-          git clone --depth 1 --branch v26.0.0 \
-            https://github.com/AdaCore/ada_language_server.git \
+          git clone --depth 1 https://github.com/AdaCore/ada_language_server.git \
             "${ALS_DIR}" 2>&1 | tail -3
           echo "--- ALS gnat/ contents ---"
           ls "${ALS_DIR}/gnat/"*.gpr 2>/dev/null | head -20
