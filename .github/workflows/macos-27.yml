@@ -422,6 +422,12 @@ jobs:
           echo "=== Verify -gnatX injection ==="
           grep -n "gnatX" "${SHARED_GPR}" || echo "(gnatX NOT found!)"
 
+          # Patch canvas_view.ads: convert expression functions to regular bodies
+          # using Unchecked_Conversion to bypass GNAT 16 anonymous access limitation.
+          if [ -f "${GTKADA_SRC}/gtkada-canvas_view.ads" ]; then
+            python3 "${GITHUB_WORKSPACE}/.ci/patch_gtkada_anon_access.py" "${GTKADA_SRC}/gtkada-canvas_view.ads"
+          fi
+
           cd "${GTKADA_SRC}"
 
           gprbuild -j"$(sysctl -n hw.ncpu)" -p -P"${GTKADA_GPR}" \
