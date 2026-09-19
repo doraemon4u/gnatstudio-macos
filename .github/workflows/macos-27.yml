@@ -222,9 +222,15 @@ jobs:
 
           echo "--- Generating _shared.gpr stubs from .gpr.in templates ---"
 
-          # Find the GTK prefix via pkg-config
+          # Find the GTK prefix and CFLAGS/LIBS via pkg-config
           GTK_PREFIX="$(pkg-config gtk+-3.0 --variable=prefix 2>/dev/null || echo /opt/homebrew)"
           echo "GTK_PREFIX=${GTK_PREFIX}"
+
+          # Get CFLAGS and LIBS from pkg-config for GPR template substitution
+          GTK_CFLAGS_GPR="$(pkg-config --cflags gtk+-3.0 2>/dev/null || echo '')"
+          GTK_LIBS_GPR="$(pkg-config --libs gtk+-3.0 2>/dev/null || echo '')"
+          echo "GTK_CFLAGS_GPR=${GTK_CFLAGS_GPR}"
+          echo "GTK_LIBS_GPR=${GTK_LIBS_GPR}"
 
           # Find all _shared.gpr.in files in the Alire build cache and generate .gpr stubs
           generated=0
@@ -238,8 +244,8 @@ jobs:
                 -e 's/@SO_EXT@/.dylib/g' \
                 -e 's/@NEED_OBJECTIVE_C@/no/g' \
                 -e "s|@GTK_PREFIX@|${GTK_PREFIX}|g" \
-                -e 's/@GTK_CFLAGS_GPR@//g' \
-                -e 's/@GTK_LIBS_GPR@//g' \
+                -e "s|@GTK_CFLAGS_GPR@|${GTK_CFLAGS_GPR}|g" \
+                -e "s|@GTK_LIBS_GPR@|${GTK_LIBS_GPR}|g" \
                 -e 's/@OBJC@/clang/g' \
                 -e 's/@PROCESSORS@/0/g' \
                 "${gpr_in}" > "${gpr_out}"
