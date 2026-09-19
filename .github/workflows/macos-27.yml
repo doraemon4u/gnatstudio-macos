@@ -226,9 +226,10 @@ jobs:
           GTK_PREFIX="$(pkg-config gtk+-3.0 --variable=prefix 2>/dev/null || echo /opt/homebrew)"
           echo "GTK_PREFIX=${GTK_PREFIX}"
 
-          # Get CFLAGS and LIBS from pkg-config for GPR template substitution
-          GTK_CFLAGS_GPR="$(pkg-config --cflags gtk+-3.0 2>/dev/null || echo '')"
-          GTK_LIBS_GPR="$(pkg-config --libs gtk+-3.0 2>/dev/null || echo '')"
+          GTK_CFLAGS_RAW="$(pkg-config --cflags gtk+-3.0 2>/dev/null || echo '')"
+          GTK_LIBS_RAW="$(pkg-config --libs gtk+-3.0 2>/dev/null || echo '')"
+          GTK_CFLAGS_GPR="$(echo "${GTK_CFLAGS_RAW}" | tr ' ' '\n' | grep -v '^$' | sed 's/^/"/;s/$/"/' | paste -sd, -)"
+          GTK_LIBS_GPR="$(echo "${GTK_LIBS_RAW}" | tr ' ' '\n' | grep -v '^$' | sed 's/^/"/;s/$/"/' | paste -sd, -)"
           echo "GTK_CFLAGS_GPR=${GTK_CFLAGS_GPR}"
           echo "GTK_LIBS_GPR=${GTK_LIBS_GPR}"
 
