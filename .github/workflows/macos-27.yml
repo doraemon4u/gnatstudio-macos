@@ -438,11 +438,23 @@ jobs:
           set -euxo pipefail
           source .ci/alire-env.sh
 
-          XMLADA_DIR=$(find "${HOME}/.local/share/alire/builds" -path "*/xmlada_*" -type d -mindepth 1 -maxdepth 1 2>/dev/null | head -1)
-          echo "xmlada dir: ${XMLADA_DIR}"
+          # Find the actual xmlada.gpr file (may be in a hash subdirectory)
+          XMLADA_GPR=$(find "${HOME}/.local/share/alire/builds" -name "xmlada.gpr" -not -name "*.bak" 2>/dev/null | head -1)
+          if [ -z "${XMLADA_GPR}" ]; then
+            echo "ERROR: Could not find xmlada.gpr in Alire cache"
+            find "${HOME}/.local/share/alire/builds" -path "*/xmlada_*" -type f -name "*.gpr" 2>/dev/null
+            exit 1
+          fi
+          XMLADA_DIR=$(dirname "${XMLADA_GPR}")
+          echo "Found xmlada.gpr at: ${XMLADA_GPR}"
+          echo "Directory: ${XMLADA_DIR}"
+
+          # List sub-projects available for the wrapper
+          echo "--- Sub-project directories ---"
+          ls -d "${XMLADA_DIR}"/*/ 2>/dev/null || true
 
           # Back up the original aggregate project
-          cp "${XMLADA_DIR}/xmlada.gpr" "${XMLADA_DIR}/xmlada.gpr.aggregate.bak"
+          cp "${XMLADA_GPR}" "${XMLADA_GPR}.aggregate.bak"
 
           # Replace with a non-aggregate wrapper that imports the same sub-projects.
           # gprbuild cannot import aggregate projects via `with` statements,
@@ -460,10 +472,10 @@ jobs:
             echo 'project XmlAda is'
             echo '   for Source_Dirs use ();'
             echo 'end XmlAda;'
-          } > "${XMLADA_DIR}/xmlada.gpr"
+          } > "${XMLADA_GPR}"
 
           echo "--- New xmlada.gpr ---"
-          cat "${XMLADA_DIR}/xmlada.gpr"
+          cat "${XMLADA_GPR}"
 
       - name: Build gtkada
         shell: bash
