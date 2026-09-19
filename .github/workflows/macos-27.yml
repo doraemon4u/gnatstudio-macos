@@ -432,35 +432,20 @@ jobs:
             -XLIBRARY_TYPE=relocatable \
             -XBUILD=Production
 
-      - name: Replace xmlada aggregate with non-aggregate wrapper
+      - name: Create non-aggregate xmlada wrapper
         shell: bash
         run: |
           set -euxo pipefail
-          source .ci/alire-env.sh
 
-          # Find the actual xmlada.gpr file (may be in a hash subdirectory)
-          XMLADA_GPR=$(find "${HOME}/.local/share/alire/builds" -name "xmlada.gpr" -not -name "*.bak" 2>/dev/null | head -1)
-          if [ -z "${XMLADA_GPR}" ]; then
-            echo "ERROR: Could not find xmlada.gpr in Alire cache"
-            find "${HOME}/.local/share/alire/builds" -path "*/xmlada_*" -type f -name "*.gpr" 2>/dev/null
-            exit 1
-          fi
-          XMLADA_DIR=$(dirname "${XMLADA_GPR}")
-          echo "Found xmlada.gpr at: ${XMLADA_GPR}"
-          echo "Directory: ${XMLADA_DIR}"
-
-          # List sub-projects available for the wrapper
-          echo "--- Sub-project directories ---"
-          ls -d "${XMLADA_DIR}"/*/ 2>/dev/null || true
-
-          # Back up the original aggregate project
-          cp "${XMLADA_GPR}" "${XMLADA_GPR}.aggregate.bak"
-
-          # Replace with a non-aggregate wrapper that imports the same sub-projects.
+          # Create a non-aggregate xmlada.gpr wrapper in a temp directory.
           # gprbuild cannot import aggregate projects via `with` statements,
-          # which breaks the dependency chain: gpr.gpr -> xmlada.gpr
+          # which breaks: gpr.gpr -> xmlada.gpr (aggregate)
+          # By placing a non-aggregate wrapper earlier in GPR_PROJECT_PATH,
+          # gprbuild finds it first instead of the aggregate in the Alire cache.
+          WRAPPER_DIR="${GITHUB_WORKSPACE}/_xmlada_wrapper"
+          mkdir -p "${WRAPPER_DIR}"
           {
-            echo '-- Non-aggregate wrapper replacing the original aggregate project.'
+            echo '-- Non-aggregate wrapper for xmlada'
             echo '-- Workaround: gprbuild 26 cannot import aggregate projects via with.'
             echo 'with "xmlada_shared";'
             echo 'with "input_sources/xmlada_input";'
@@ -472,10 +457,12 @@ jobs:
             echo 'project XmlAda is'
             echo '   for Source_Dirs use ();'
             echo 'end XmlAda;'
-          } > "${XMLADA_GPR}"
+          } > "${WRAPPER_DIR}/xmlada.gpr"
 
-          echo "--- New xmlada.gpr ---"
-          cat "${XMLADA_GPR}"
+          echo "--- Wrapper xmlada.gpr ---"
+          cat "${WRAPPER_DIR}/xmlada.gpr"
+          echo "--- Original aggregate xmlada.gpr (first 5 lines) ---"
+          find "${HOME}/.local/share/alire/builds" -name "xmlada.gpr" -not -name "*.bak" 2>/dev/null | head -1 | xargs head -5
 
       - name: Build gtkada
         shell: bash
@@ -546,8 +533,8 @@ jobs:
           done
           echo "ALIRE_EXTRA_PATHS=${ALIRE_EXTRA_PATHS}"
 
-          export GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr${ALIRE_EXTRA_PATHS}:${GPR_PROJECT_PATH:-}"
-          export ADA_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr${ALIRE_EXTRA_PATHS}:${ADA_PROJECT_PATH:-}"
+          export GPR_PROJECT_PATH="${GITHUB_WORKSPACE}/_xmlada_wrapper:${GNATCOLL_PYTHON_PREFIX}/share/gpr${ALIRE_EXTRA_PATHS}:${GPR_PROJECT_PATH:-}"
+          export ADA_PROJECT_PATH="${GITHUB_WORKSPACE}/_xmlada_wrapper:${GNATCOLL_PYTHON_PREFIX}/share/gpr${ALIRE_EXTRA_PATHS}:${ADA_PROJECT_PATH:-}"
           export LIBRARY_TYPE=static
           export PATH="${PYTHON_PREFIX}/bin:${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
 
@@ -575,8 +562,12 @@ jobs:
         run: |
           set -euxo pipefail
           source .ci/alire-env.sh
-          export GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
+          # Prepend xmlada wrapper dir so non-aggregate xmlada.gpr is found first
+          export GPR_PROJECT_PATH="${GITHUB_WORKSPACE}/_xmlada_wrapper:${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
+
+          echo "--- GPR_PROJECT_PATH (first 5 entries) ---"
+          echo "${GPR_PROJECT_PATH}" | tr ':' '\n' | head -5
 
           make BUILD=Production -j"$(sysctl -n hw.ncpu)"
 
@@ -585,7 +576,7 @@ jobs:
         run: |
           set -euxo pipefail
           source .ci/alire-env.sh
-          export GPR_PROJECT_PATH="${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
+          export GPR_PROJECT_PATH="${GITHUB_WORKSPACE}/_xmlada_wrapper:${GNATCOLL_PYTHON_PREFIX}/share/gpr:${GPR_PROJECT_PATH:-}"
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
 
           make install-strip prefix="$GITHUB_WORKSPACE/_install"
