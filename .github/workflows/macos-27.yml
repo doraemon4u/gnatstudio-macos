@@ -195,7 +195,7 @@ jobs:
           for dep in "gtkada=26.0.0" "xmlada=26.0.0" "gnatcoll=26.0.0" \
                      "gnatcoll_projects=26.0.0" "vss_extra=26.2.0" "vss_text=26.2.0" \
                      "gnatcoll_xref=26.0.0" "libadalang=26.0.0" \
-                     "libadalang_tools=26.0.0" "ada_language_server=26.0.0"; do
+                     "libadalang_tools=26.0.0" "spawn_glib=26.0.0"; do
             ok=0
             for attempt in 1 2 3; do
               if alr with "${dep}"; then ok=1; break; fi
@@ -466,6 +466,32 @@ jobs:
           echo "--- Original aggregate xmlada.gpr (first 5 lines) ---"
           find "${HOME}/.local/share/alire/builds" -name "xmlada.gpr" -not -name "*.bak" 2>/dev/null | head -1 | xargs head -5
 
+          # tp_xmlada.gpr: templates_parser.gpr imports tp_xmlada which lives at
+          # the xmlada aggregate root, but Alire only adds sub-dirs to the path.
+          {
+            echo 'with "xmlada_sax";'
+            echo 'with "xmlada_dom";'
+            echo 'with "xmlada_unicode";'
+            echo 'with "xmlada_input";'
+            echo ''
+            echo 'project Tp_Xmlada is'
+            echo '   for Source_Dirs use ();'
+            echo 'end Tp_Xmlada;'
+          } > "${WRAPPER_DIR}/tp_xmlada.gpr"
+
+      - name: Clone ada_language_server for LSP project files
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # alr with ada_language_server was skipped by Alire (missing deps).
+          # Clone it directly to get lsp_3_17.gpr, lsp_client_glib_3_17.gpr, etc.
+          ALS_DIR="${GITHUB_WORKSPACE}/_als_src"
+          git clone --depth 1 --branch v26.0.0 \
+            https://github.com/AdaCore/ada_language_server.git \
+            "${ALS_DIR}" 2>&1 | tail -3
+          echo "--- ALS gnat/ contents ---"
+          ls "${ALS_DIR}/gnat/"*.gpr 2>/dev/null | head -20
+
       - name: Build gtkada
         shell: bash
         run: |
@@ -579,7 +605,7 @@ jobs:
           done
           echo "ALIRE_EXTRA_PATHS=${ALIRE_EXTRA_PATHS}"
 
-          export GPR_PROJECT_PATH="${GITHUB_WORKSPACE}/_xmlada_wrapper:${GNATCOLL_PYTHON_PREFIX}/share/gpr${ALIRE_EXTRA_PATHS}:${GPR_PROJECT_PATH:-}"
+          export GPR_PROJECT_PATH="${GITHUB_WORKSPACE}/_xmlada_wrapper:${GITHUB_WORKSPACE}/_als_src/gnat:${GNATCOLL_PYTHON_PREFIX}/share/gpr${ALIRE_EXTRA_PATHS}:${GPR_PROJECT_PATH:-}"
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
 
           echo "--- GPR_PROJECT_PATH ---"
@@ -606,7 +632,7 @@ jobs:
             fi
           done
 
-          export GPR_PROJECT_PATH="${GITHUB_WORKSPACE}/_xmlada_wrapper:${GNATCOLL_PYTHON_PREFIX}/share/gpr${ALIRE_EXTRA_PATHS}:${GPR_PROJECT_PATH:-}"
+          export GPR_PROJECT_PATH="${GITHUB_WORKSPACE}/_xmlada_wrapper:${GITHUB_WORKSPACE}/_als_src/gnat:${GNATCOLL_PYTHON_PREFIX}/share/gpr${ALIRE_EXTRA_PATHS}:${GPR_PROJECT_PATH:-}"
           export PATH="${BREW_PREFIX}/opt/make/libexec/gnubin:${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:${PYTHON_PREFIX}/bin:${ALIRE_PREFIX}/bin:${GITHUB_WORKSPACE}/.ci/bin:${GITHUB_WORKSPACE}/.ci/alire_bin/bin:${PATH}"
 
           make install-strip prefix="$GITHUB_WORKSPACE/_install"
