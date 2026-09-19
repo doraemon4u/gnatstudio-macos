@@ -6,7 +6,7 @@ Handles both single-line and multi-line 'for Switches ("Ada") use' constructs.
 import re
 import sys
 
-FLAGS = '"-gnatX", "-gnat2022"'
+FLAGS = '"-gnatX"'
 
 def patch(path):
     with open(path) as f:
