@@ -1,38 +1,22 @@
 #!/usr/bin/env python3
-"""Inject -gnatX -gnat2022 into Ada Switches clauses in a GPR project file.
+"""Patch GtkAda GPR files for GNAT 16 compatibility.
 
-Handles both single-line and multi-line 'for Switches ("Ada") use' constructs.
+GNAT 16.1.0 and gprbuild 26 have compatibility issues when -gnatX is
+injected into GtkAda's shared GPR. The "cannot generate code for file
+(package spec)" error on spec-only packages like gtkada-intl.ads is caused
+by -gnatX changing how gprbuild processes library sources.
+
+This script now does nothing (no-op) — the -gnatX injection was removed
+because it causes more problems than it solves with this toolchain
+combination. The canvas_view.ads anonymous access issue is handled by
+patch_gtkada_anon_access.py instead.
 """
-import re
 import sys
 
-FLAGS = '"-gnatX"'
 
 def patch(path):
-    with open(path) as f:
-        lines = f.readlines()
-    out = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        # Multi-line: 'for [Default_]Switches ("Ada") use' alone on line
-        if re.search(r'for\s+(Default_)?Switches\s+\("Ada"\)\s+use\s*$', line.rstrip()):
-            out.append(line)
-            i += 1
-            if i < len(lines):
-                nxt = lines[i]
-                nxt = re.sub(r'^(\s*)\(', f'\\1({FLAGS}, ', nxt, count=1)
-                out.append(nxt)
-        # Single-line: 'for [Default_]Switches ("Ada") use (...)' on one line
-        elif re.search(r'for\s+(Default_)?Switches\s+\("Ada"\)\s+use\s+\(', line):
-            line = re.sub(r'(use\s+)\(', f'\\1({FLAGS}, ', line, count=1)
-            out.append(line)
-        else:
-            out.append(line)
-        i += 1
-    with open(path, 'w') as f:
-        f.writelines(out)
-    print('Patched', path)
+    print(f'No-op: skipping GPR patch for {path} (gnatX injection removed)')
+
 
 if __name__ == '__main__':
     patch(sys.argv[1])
